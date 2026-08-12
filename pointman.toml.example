@@ -1,0 +1,6 @@
+# game root — Steam F.E.A.R. Ultimate Shooter Edition (app 21090)
+# Copy to pointman.toml (gitignored) only if auto-detect fails.
+
+[game]
+root = "/home/bogdan/.local/share/Steam/steamapps/common/FEAR Ultimate Shooter Edition"
+archcfg = "Default.archcfg"

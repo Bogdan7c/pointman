@@ -1,0 +1,10 @@
+[package]
+name = "reztool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pointman-assets.workspace = true
+clap.workspace = true
+anyhow.workspace = true

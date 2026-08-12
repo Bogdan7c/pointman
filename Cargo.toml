@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/assets",
+    "crates/ai",
+    "crates/render",
+    "crates/engine",
+    "crates/game",
+    "apps/pointman",
+    "apps/reztool",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/bogdan/pointman"
+rust-version = "1.80"
+
+[workspace.dependencies]
+pointman-assets = { path = "crates/assets" }
+pointman-ai = { path = "crates/ai" }
+pointman-render = { path = "crates/render" }
+pointman-engine = { path = "crates/engine" }
+pointman-game = { path = "crates/game" }
+
+ash = "0.38"
+ash-window = "0.13"
+winit = "0.30"
+raw-window-handle = "0.6"
+gpu-allocator = { version = "0.27", default-features = false, features = ["vulkan"] }
+glam = { version = "0.30", features = ["bytemuck"] }
+bytemuck = { version = "1", features = ["derive"] }
+thiserror = "2"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+bitflags = "2"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+gilrs = "0.11"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,10 @@
+/target
+**/*.spv
+.idea/
+.vscode/
+*.swp
+.DS_Store
+/game-data
+/extracted
+.env
+pointman.toml

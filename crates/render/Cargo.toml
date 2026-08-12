@@ -1,0 +1,16 @@
+[package]
+name = "pointman-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ash.workspace = true
+ash-window.workspace = true
+winit.workspace = true
+raw-window-handle.workspace = true
+gpu-allocator.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+thiserror.workspace = true
+log.workspace = true

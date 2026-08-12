@@ -1,0 +1,12 @@
+[package]
+name = "pointman-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pointman-ai.workspace = true
+pointman-assets.workspace = true
+pointman-render.workspace = true
+glam.workspace = true
+log.workspace = true
