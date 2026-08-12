@@ -10,6 +10,9 @@ mod extensions;
 mod mat00;
 mod rez;
 mod world00p;
+mod world_models;
+
+pub use world_models::{WorldBsp, WorldModels};
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
 pub use dds::{DdsFormat, DdsImage};

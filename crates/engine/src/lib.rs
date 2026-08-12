@@ -1,5 +1,7 @@
+mod clip;
 mod input;
 
+pub use clip::ClipMesh;
 pub use input::{xbox360, Input};
 
 use glam::{Mat4, Vec3, Vec4};
@@ -19,6 +21,7 @@ pub struct LevelDraw {
 struct LoadedLevel {
     mesh: MeshId,
     draws: Vec<LevelDraw>,
+    clip: Option<ClipMesh>,
 }
 
 pub struct Replica {
@@ -42,6 +45,7 @@ pub struct Simulation {
     unit: f32,
     /// World-space floor used for eye height (LithTech Y-up).
     floor_y: f32,
+    vertical_speed: f32,
     level: Option<LoadedLevel>,
 }
 
@@ -72,6 +76,7 @@ impl Simulation {
             slowmo: false,
             unit: 1.0,
             floor_y: 0.0,
+            vertical_speed: 0.0,
             level: None,
         }
     }
@@ -83,9 +88,21 @@ impl Simulation {
         min: Vec3,
         max: Vec3,
         spawn: Option<Vec3>,
+        triangles: Vec<[Vec3; 3]>,
     ) {
+        self.vertical_speed = 0.0;
         self.unit = 100.0;
-        self.level = Some(LoadedLevel { mesh, draws });
+        let clip = if triangles.is_empty() {
+            None
+        } else {
+            log::info!("PhysicsBSP triangles {}", triangles.len());
+            Some(ClipMesh::from_triangles(triangles))
+        };
+        self.level = Some(LoadedLevel {
+            mesh,
+            draws,
+            clip,
+        });
         let center = (min + max) * 0.5;
         let extent = max - min;
         let spawn = spawn.unwrap_or(Vec3::new(center.x, min.y, center.z));
@@ -138,22 +155,35 @@ impl Simulation {
 
         let mut wish = self.camera.forward() * input.move_axis.y + self.camera.right() * input.move_axis.x;
         wish.y = 0.0;
+        let speed = if self.crouch {
+            2.2
+        } else if input.move_axis.length() > 0.9 {
+            4.2
+        } else {
+            2.4
+        } * self.unit;
         if wish.length_squared() > 0.0 {
-            let speed = if self.crouch {
-                2.2
-            } else if input.move_axis.length() > 0.9 {
-                4.2
-            } else {
-                2.4
-            } * self.unit;
-            self.camera.position += wish.normalize() * speed * dt * input.move_axis.length().min(1.0);
+            wish = wish.normalize() * speed * input.move_axis.length().min(1.0);
         }
-        self.camera.position.y = self.floor_y
-            + if self.crouch {
-                1.05 * self.unit
-            } else {
-                1.6 * self.unit
-            };
+        let eye_h = if self.crouch {
+            1.05 * self.unit
+        } else {
+            1.6 * self.unit
+        };
+        if let Some(clip) = self.level.as_ref().and_then(|l| l.clip.as_ref()) {
+            self.camera.position = clip.move_eye(
+                self.camera.position,
+                wish,
+                0.32 * self.unit,
+                eye_h,
+                dt,
+                9.8 * self.unit,
+                &mut self.vertical_speed,
+            );
+        } else {
+            self.camera.position += wish * dt;
+            self.camera.position.y = self.floor_y + eye_h;
+        }
 
         let dist = self.camera.position.distance(self.replica.position);
         let alert = if dist < 6.0 * self.unit {

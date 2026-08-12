@@ -3,7 +3,7 @@ mod gamepad;
 use anyhow::Context;
 use gamepad::Devices;
 use glam::{Vec2, Vec3};
-use pointman_assets::{archive_key, DdsFormat, DdsImage, Material};
+use pointman_assets::{archive_key, DdsFormat, DdsImage, Material, WorldModels, WorldRender};
 use pointman_engine::{LevelDraw, Simulation};
 use pointman_game::{AssetIndex, Config, GameMount, INTRO_WORLD};
 use pointman_render::{Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
@@ -170,8 +170,9 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) {
-    match mount.read_world(INTRO_WORLD) {
-        Ok(world) => {
+    match mount.read_file(INTRO_WORLD) {
+        Ok(bytes) => match WorldRender::parse(&bytes) {
+            Ok(world) => {
             let (verts, indices, draws) = world.flatten();
             log::info!(
                 "{INTRO_WORLD}: {} surfaces, {} verts, {} indices, bounds {:?} → {:?}",
@@ -228,11 +229,36 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         fallback
                     );
                     let spawn = verts.first().map(|v| Vec3::from_array(v.position));
-                    sim.set_level(mesh, level_draws, world.header.min, world.header.max, spawn);
+                    let triangles = WorldModels::parse(&bytes)
+                        .map(|m| {
+                            if let Some(bsp) = m.physics() {
+                                log::info!(
+                                    "PhysicsBSP {}  points {}  polys {}",
+                                    bsp.names.join(","),
+                                    bsp.points.len(),
+                                    bsp.polygons.len()
+                                );
+                            }
+                            m.triangles()
+                        })
+                        .unwrap_or_else(|err| {
+                            log::error!("PhysicsBSP: {err}");
+                            Vec::new()
+                        });
+                    sim.set_level(
+                        mesh,
+                        level_draws,
+                        world.header.min,
+                        world.header.max,
+                        spawn,
+                        triangles,
+                    );
                 }
                 Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
             }
-        }
+            }
+            Err(err) => log::error!("parse {INTRO_WORLD}: {err}"),
+        },
         Err(err) => log::error!("load {INTRO_WORLD}: {err}"),
     }
 }

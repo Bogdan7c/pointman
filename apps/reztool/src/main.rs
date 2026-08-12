@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
-use pointman_assets::{kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldRender};
+use pointman_assets::{kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldModels, WorldRender};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -98,6 +98,22 @@ fn main() -> anyhow::Result<()> {
             }
             if world.surfaces.len() > 16 {
                 println!("  … {} more", world.surfaces.len() - 16);
+            }
+            match WorldModels::parse(&bytes) {
+                Ok(models) => {
+                    if let Some(bsp) = models.physics() {
+                        println!(
+                            "PhysicsBSP {}  points {}  polys {}  tris {}",
+                            bsp.names.join(","),
+                            bsp.points.len(),
+                            bsp.polygons.len(),
+                            models.triangles().len()
+                        );
+                    } else {
+                        println!("PhysicsBSP missing");
+                    }
+                }
+                Err(err) => println!("world models: {err}"),
             }
         }
         Cmd::Extract {
