@@ -1,4 +1,5 @@
 use crate::mesh::Vertex;
+use crate::texture::{self, GpuTexture, TextureId, TextureUpload, MAX_TEXTURES};
 use crate::{DrawList, MeshId, RenderError};
 use ash::khr::{surface as khr_surface, swapchain as khr_swapchain};
 use ash::{vk, Device, Entry, Instance};
@@ -83,6 +84,7 @@ pub struct Renderer {
     sampler: vk::Sampler,
     ubo_layout: vk::DescriptorSetLayout,
     sampled_layout: vk::DescriptorSetLayout,
+    material_layout: vk::DescriptorSetLayout,
     gbuffer_pipe_layout: vk::PipelineLayout,
     lighting_pipe_layout: vk::PipelineLayout,
     gbuffer_pipe: vk::Pipeline,
@@ -93,6 +95,7 @@ pub struct Renderer {
     frames: Vec<FrameSync>,
     frame_index: usize,
     meshes: Vec<GpuMesh>,
+    textures: Vec<GpuTexture>,
 }
 
 impl Renderer {
@@ -173,11 +176,12 @@ impl Renderer {
         let lighting_pass = create_lighting_pass(&device, swap_format)?;
         let sampler = create_sampler(&device)?;
         let (ubo_layout, sampled_layout) = create_set_layouts(&device)?;
+        let material_layout = texture::create_material_layout(&device)?;
         let push_range = vk::PushConstantRange::default()
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .offset(0)
             .size(size_of::<Push>() as u32);
-        let gbuffer_set_layouts = [ubo_layout];
+        let gbuffer_set_layouts = [ubo_layout, material_layout];
         let gbuffer_pipe_layout = unsafe {
             device.create_pipeline_layout(
                 &vk::PipelineLayoutCreateInfo::default()
@@ -226,13 +230,13 @@ impl Renderer {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 3,
+                descriptor_count: 3 + MAX_TEXTURES,
             },
         ];
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
-                    .max_sets((FRAMES + 1) as u32)
+                    .max_sets((FRAMES as u32) + 1 + MAX_TEXTURES)
                     .pool_sizes(&pool_sizes),
                 None,
             )?
@@ -358,6 +362,7 @@ impl Renderer {
             sampler,
             ubo_layout,
             sampled_layout,
+            material_layout,
             gbuffer_pipe_layout,
             lighting_pipe_layout,
             gbuffer_pipe,
@@ -372,7 +377,22 @@ impl Renderer {
                 ib: cube_ib,
                 index_count: inds.len() as u32,
             }],
+            textures: Vec::new(),
         };
+        let white = texture::upload_texture(
+            &renderer.device,
+            renderer.queue,
+            renderer.cmd_pool,
+            renderer
+                .allocator
+                .as_mut()
+                .ok_or_else(|| RenderError::Alloc("allocator gone".into()))?,
+            renderer.descriptor_pool,
+            renderer.material_layout,
+            renderer.sampler,
+            texture::white_upload(),
+        )?;
+        renderer.textures.push(white);
         renderer.recreate_gbuffer()?;
         Ok(renderer)
     }
@@ -417,6 +437,29 @@ impl Renderer {
             ib,
             index_count: indices.len() as u32,
         });
+        Ok(id)
+    }
+
+    pub fn upload_texture(&mut self, data: TextureUpload<'_>) -> Result<TextureId, RenderError> {
+        if self.textures.len() as u32 >= MAX_TEXTURES {
+            return Err(RenderError::Alloc("texture limit".into()));
+        }
+        let allocator = self
+            .allocator
+            .as_mut()
+            .ok_or_else(|| RenderError::Alloc("allocator gone".into()))?;
+        let gpu = texture::upload_texture(
+            &self.device,
+            self.queue,
+            self.cmd_pool,
+            allocator,
+            self.descriptor_pool,
+            self.material_layout,
+            self.sampler,
+            data,
+        )?;
+        let id = TextureId(self.textures.len() as u32);
+        self.textures.push(gpu);
         Ok(id)
     }
 
@@ -580,7 +623,7 @@ impl Renderer {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.gbuffer_pipe_layout,
                 0,
-                &[self.frames[frame_i].ubo_set],
+                &[self.frames[frame_i].ubo_set, self.textures[0].set],
                 &[],
             );
             self.device
@@ -593,6 +636,7 @@ impl Renderer {
             );
         }
         let mut bound = 0u32;
+        let mut bound_tex = TextureId::WHITE;
         for inst in &list.instances {
             let mesh_id = inst.mesh.0 as usize;
             if mesh_id >= self.meshes.len() {
@@ -612,6 +656,20 @@ impl Renderer {
                         self.meshes[mesh_id].ib.buffer,
                         0,
                         vk::IndexType::UINT32,
+                    );
+                }
+            }
+            let tex = inst.texture.0 as usize;
+            if tex < self.textures.len() && inst.texture != bound_tex {
+                bound_tex = inst.texture;
+                unsafe {
+                    self.device.cmd_bind_descriptor_sets(
+                        cmd,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.gbuffer_pipe_layout,
+                        1,
+                        &[self.textures[tex].set],
+                        &[],
                     );
                 }
             }
@@ -842,6 +900,15 @@ impl Drop for Renderer {
                 let _ = allocator.free(alloc);
             }
         }
+        unsafe {
+            for tex in &self.textures {
+                self.device.destroy_image_view(tex.view, None);
+                self.device.destroy_image(tex.image, None);
+            }
+        }
+        for tex in self.textures.drain(..) {
+            let _ = allocator.free(tex.alloc);
+        }
         drop(allocator);
         unsafe {
             self.device.destroy_pipeline(self.gbuffer_pipe, None);
@@ -850,6 +917,7 @@ impl Drop for Renderer {
             self.device.destroy_pipeline_layout(self.lighting_pipe_layout, None);
             self.device.destroy_descriptor_set_layout(self.ubo_layout, None);
             self.device.destroy_descriptor_set_layout(self.sampled_layout, None);
+            self.device.destroy_descriptor_set_layout(self.material_layout, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_sampler(self.sampler, None);
             self.device.destroy_render_pass(self.gbuffer_pass, None);
@@ -1093,12 +1161,13 @@ fn create_sampler(device: &Device) -> Result<vk::Sampler, RenderError> {
     Ok(unsafe {
         device.create_sampler(
             &vk::SamplerCreateInfo::default()
-                .mag_filter(vk::Filter::NEAREST)
-                .min_filter(vk::Filter::NEAREST)
-                .mipmap_mode(vk::SamplerMipmapMode::NEAREST)
-                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE),
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
+                .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+                .address_mode_u(vk::SamplerAddressMode::REPEAT)
+                .address_mode_v(vk::SamplerAddressMode::REPEAT)
+                .address_mode_w(vk::SamplerAddressMode::REPEAT)
+                .max_lod(16.0),
             None,
         )?
     })
@@ -1193,6 +1262,12 @@ fn create_gbuffer_pipeline(
             binding: 0,
             format: vk::Format::R32G32B32_SFLOAT,
             offset: 12,
+        },
+        vk::VertexInputAttributeDescription {
+            location: 2,
+            binding: 0,
+            format: vk::Format::R32G32_SFLOAT,
+            offset: 24,
         },
     ];
     let vertex = vk::PipelineVertexInputStateCreateInfo::default()

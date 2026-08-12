@@ -27,9 +27,10 @@
 
 ### 1. Мир на экране — в работе
 - [x] Render surfaces из `World00p` (vertex blocks, materials)
-- [ ] DDS → Vulkan, `Mat00` (diffuse/spec/normal)
+- [x] DDS → Vulkan, `Mat00` diffuse (BC1/BC2/BC3, UV, REPEAT)
+- [ ] `Mat00` spec/normal — после коллизии
 - [ ] Камера/коллизия по BSP, не сквозь стены
-- [x] Загрузка Intro / первой карты кампании (`Worlds/Release/Intro.World00p`, без текстур и коллизии)
+- [x] Загрузка Intro / первой карты кампании (`Worlds/Release/Intro.World00p`)
 
 ### 2. Игрок 1:1
 - [ ] Ходьба, присед, lean, прыжок, фонарик
@@ -68,4 +69,4 @@
 - [ ] Рендер: clustered/deferred, тени, MSAA/TAA — **без ломки оригинального lighting model**
 - [ ] Ребинды, Steam Input как опция, дефолт — 360
 
-Порядок работы: не перескакивать фазы. Следующий пункт — **DDS + Mat00** (сначала diffuse на Intro, потом spec/normal).
+Порядок работы: не перескакивать фазы. Следующий пункт — **коллизия по BSP** (не ходить сквозь стены). Spec/normal карт — после этого.

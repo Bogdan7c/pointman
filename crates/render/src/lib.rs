@@ -2,11 +2,13 @@ mod backend;
 mod camera;
 mod error;
 mod mesh;
+mod texture;
 
 pub use backend::Renderer;
 pub use camera::Camera;
 pub use error::RenderError;
 pub use mesh::{corridor_boxes, cube, Vertex};
+pub use texture::{TextureFormat, TextureId, TextureUpload};
 
 use glam::{Mat4, Vec3, Vec4};
 
@@ -24,6 +26,7 @@ pub struct MeshInstance {
     pub index_count: u32,
     pub transform: Mat4,
     pub color: Vec4,
+    pub texture: TextureId,
 }
 
 impl MeshInstance {
@@ -34,6 +37,7 @@ impl MeshInstance {
             index_count: 0,
             transform,
             color,
+            texture: TextureId::WHITE,
         }
     }
 }

@@ -3,9 +3,11 @@ mod gamepad;
 use anyhow::Context;
 use gamepad::Devices;
 use glam::{Vec2, Vec3};
-use pointman_engine::Simulation;
-use pointman_game::{Config, GameMount, INTRO_WORLD};
-use pointman_render::{Renderer, Vertex};
+use pointman_assets::{archive_key, DdsFormat, DdsImage, Material};
+use pointman_engine::{LevelDraw, Simulation};
+use pointman_game::{AssetIndex, Config, GameMount, INTRO_WORLD};
+use pointman_render::{Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
+use std::collections::HashMap;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
@@ -184,16 +186,103 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                 .map(|v| Vertex {
                     pos: v.position,
                     normal: v.normal,
+                    uv: v.uv,
                 })
                 .collect();
             match renderer.upload_mesh(&gpu, &indices) {
                 Ok(mesh) => {
+                    let mut index = mount.index();
+                    let mut dds_cache = HashMap::new();
+                    let mut mat_cache = HashMap::new();
+                    let mut textured = 0u32;
+                    let mut fallback = 0u32;
+                    let mut level_draws = Vec::with_capacity(draws.len());
+                    for draw in draws {
+                        let tex = texture_for(
+                            &mut index,
+                            renderer,
+                            &mut mat_cache,
+                            &mut dds_cache,
+                            &draw.material,
+                        );
+                        if tex == TextureId::WHITE {
+                            fallback += 1;
+                        } else {
+                            textured += 1;
+                        }
+                        level_draws.push(LevelDraw {
+                            first_index: draw.first_index,
+                            index_count: draw.index_count,
+                            color: if tex == TextureId::WHITE {
+                                draw.color
+                            } else {
+                                [1.0, 1.0, 1.0, 1.0]
+                            },
+                            texture: tex,
+                        });
+                    }
+                    log::info!(
+                        "intro textures: {} unique dds, {} surfaces textured, {} fallback",
+                        dds_cache.len(),
+                        textured,
+                        fallback
+                    );
                     let spawn = verts.first().map(|v| Vec3::from_array(v.position));
-                    sim.set_level(mesh, draws, world.header.min, world.header.max, spawn);
+                    sim.set_level(mesh, level_draws, world.header.min, world.header.max, spawn);
                 }
                 Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
             }
         }
         Err(err) => log::error!("load {INTRO_WORLD}: {err}"),
     }
+}
+
+fn texture_for(
+    index: &mut AssetIndex,
+    renderer: &mut Renderer,
+    mat_cache: &mut HashMap<String, TextureId>,
+    dds_cache: &mut HashMap<String, TextureId>,
+    material: &str,
+) -> TextureId {
+    if let Some(id) = mat_cache.get(material) {
+        return *id;
+    }
+    let id = load_diffuse(index, renderer, dds_cache, material).unwrap_or(TextureId::WHITE);
+    mat_cache.insert(material.to_string(), id);
+    id
+}
+
+fn load_diffuse(
+    index: &mut AssetIndex,
+    renderer: &mut Renderer,
+    dds_cache: &mut HashMap<String, TextureId>,
+    material: &str,
+) -> anyhow::Result<TextureId> {
+    let mat = Material::parse(&index.read(&archive_key(material))?)?;
+    let diffuse = mat
+        .diffuse_map()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("no tDiffuseMap in {material}"))?;
+    let mut key = archive_key(diffuse);
+    if !key.to_ascii_lowercase().ends_with(".dds") {
+        key.push_str(".dds");
+    }
+    if let Some(id) = dds_cache.get(&key) {
+        return Ok(*id);
+    }
+    let dds = DdsImage::parse(&index.read(&key)?)?;
+    let format = match dds.format {
+        DdsFormat::Bc1 => TextureFormat::Bc1,
+        DdsFormat::Bc2 => TextureFormat::Bc2,
+        DdsFormat::Bc3 => TextureFormat::Bc3,
+    };
+    let id = renderer.upload_texture(TextureUpload {
+        width: dds.width,
+        height: dds.height,
+        mip_count: dds.mip_count,
+        format,
+        bytes: &dds.bytes,
+    })?;
+    dds_cache.insert(key, id);
+    Ok(id)
 }

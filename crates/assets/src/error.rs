@@ -21,4 +21,6 @@ pub enum AssetError {
     Utf8,
     #[error("world version {0} is not Jupiter EX F.E.A.R. (113)")]
     WorldVersion(u32),
+    #[error("unsupported DDS fourcc {0:#x}")]
+    UnsupportedDds(u32),
 }

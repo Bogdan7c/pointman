@@ -6,6 +6,7 @@ use glam::Vec3;
 pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 pub fn cube() -> (Vec<Vertex>, Vec<u16>) {
@@ -25,6 +26,7 @@ pub fn cube() -> (Vec<Vertex>, Vec<u16>) {
             vertices.push(Vertex {
                 pos: [c[0] as f32 * 0.5, c[1] as f32 * 0.5, c[2] as f32 * 0.5],
                 normal: n,
+                uv: [0.0, 0.0],
             });
         }
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);

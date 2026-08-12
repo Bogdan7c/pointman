@@ -4,19 +4,27 @@
 //! notes. This crate never ships game data.
 
 mod arch00;
+mod dds;
 mod error;
 mod extensions;
+mod mat00;
 mod rez;
 mod world00p;
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
+pub use dds::{DdsFormat, DdsImage};
 pub use error::AssetError;
 pub use extensions::{kind_from_path, ResourceKind};
+pub use mat00::Material;
 pub use rez::{RezArchive, RezEntry};
 pub use world00p::{
     SurfaceDraw, WorldHeader, WorldRender, WorldSurface, WorldVertex, FEAR_WORLD_MAGIC,
     FEAR_WORLD_VERSION,
 };
+
+pub fn archive_key(logical: &str) -> String {
+    logical.replace('\\', "/")
+}
 
 use std::fs::File;
 use std::io::{Read, Seek};

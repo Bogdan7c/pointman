@@ -1365,7 +1365,6 @@ dependencies = [
  "glam",
  "log",
  "pointman-ai",
- "pointman-assets",
  "pointman-render",
 ]
 

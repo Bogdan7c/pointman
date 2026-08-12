@@ -12,6 +12,7 @@ pub const INTRO_WORLD: &str = "Worlds/Release/Intro.World00p";
 use pointman_assets::{
     kind_from_path, ArchHeader, GameArchive, ResourceKind, WorldRender,
 };
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -184,6 +185,43 @@ impl GameMount {
 
     pub fn read_world(&self, logical: &str) -> Result<WorldRender, pointman_assets::AssetError> {
         WorldRender::parse(&self.read_file(logical)?)
+    }
+
+    /// Open every archive once and map logical paths → owning pack.
+    pub fn index(&self) -> AssetIndex {
+        let mut files = HashMap::new();
+        let mut open = HashMap::new();
+        for path in &self.archives {
+            let Ok(archive) = GameArchive::open(path) else {
+                log::error!("index skip {}", path.display());
+                continue;
+            };
+            for name in archive.list() {
+                files.insert(name.replace('\\', "/").to_ascii_lowercase(), path.clone());
+            }
+            open.insert(path.clone(), archive);
+        }
+        AssetIndex { files, open }
+    }
+}
+
+pub struct AssetIndex {
+    files: HashMap<String, PathBuf>,
+    open: HashMap<PathBuf, GameArchive>,
+}
+
+impl AssetIndex {
+    pub fn read(&mut self, logical: &str) -> Result<Vec<u8>, pointman_assets::AssetError> {
+        let key = logical.replace('\\', "/").to_ascii_lowercase();
+        let path = self
+            .files
+            .get(&key)
+            .ok_or_else(|| pointman_assets::AssetError::NotFound(logical.to_string()))?
+            .clone();
+        self.open
+            .get_mut(&path)
+            .ok_or_else(|| pointman_assets::AssetError::NotFound(logical.to_string()))?
+            .read(&key)
     }
 }
 

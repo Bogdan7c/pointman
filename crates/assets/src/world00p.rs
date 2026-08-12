@@ -23,6 +23,7 @@ pub struct WorldHeader {
 pub struct WorldVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 #[derive(Debug, Clone)]
@@ -175,17 +176,19 @@ impl WorldRender {
                 first_index,
                 index_count: surface.indices.len() as u32,
                 color: material_color(&surface.material),
+                material: surface.material.clone(),
             });
         }
         (vertices, indices, draws)
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SurfaceDraw {
     pub first_index: u32,
     pub index_count: u32,
     pub color: [f32; 4],
+    pub material: String,
 }
 
 struct RawSurface {
@@ -297,6 +300,7 @@ fn decode_surface_vertices(
 fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetError> {
     let mut pos = [0.0f32; 3];
     let mut normal = [0.0, 1.0, 0.0];
+    let mut uv = [0.0f32; 2];
     let mut have_pos = false;
     for prop in def {
         let size = match prop.format {
@@ -321,6 +325,7 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
                 have_pos = true;
             }
             (3, 2) => normal = unpack3(slice),
+            (5, 1) => uv = unpack2(slice),
             _ => {}
         }
     }
@@ -330,7 +335,15 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
     Ok(WorldVertex {
         position: pos,
         normal,
+        uv,
     })
+}
+
+fn unpack2(slice: &[u8]) -> [f32; 2] {
+    [
+        f32::from_le_bytes(slice[0..4].try_into().unwrap()),
+        f32::from_le_bytes(slice[4..8].try_into().unwrap()),
+    ]
 }
 
 fn unpack3(slice: &[u8]) -> [f32; 3] {
@@ -387,5 +400,32 @@ mod tests {
         let h = WorldHeader::parse(&bytes).unwrap();
         assert_eq!(h.render_section_offset, 100);
         assert_eq!(WorldHeader::decode_count(399 ^ 12), 12);
+    }
+
+    #[test]
+    fn decode_uv_by_offset() {
+        let def = [
+            VertexProp {
+                offset: 0,
+                format: 2,
+                location: 0,
+                id: 0,
+            },
+            VertexProp {
+                offset: 12,
+                format: 1,
+                location: 5,
+                id: 0,
+            },
+        ];
+        let mut bytes = vec![0u8; 20];
+        bytes[0..4].copy_from_slice(&1.0f32.to_le_bytes());
+        bytes[4..8].copy_from_slice(&2.0f32.to_le_bytes());
+        bytes[8..12].copy_from_slice(&3.0f32.to_le_bytes());
+        bytes[12..16].copy_from_slice(&0.25f32.to_le_bytes());
+        bytes[16..20].copy_from_slice(&0.75f32.to_le_bytes());
+        let v = decode_vertex(&bytes, &def).unwrap();
+        assert_eq!(v.position, [1.0, 2.0, 3.0]);
+        assert_eq!(v.uv, [0.25, 0.75]);
     }
 }

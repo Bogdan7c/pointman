@@ -5,12 +5,20 @@ pub use input::{xbox360, Input};
 use glam::{Mat4, Vec3, Vec4};
 use pointman_ai::replica::{self, ALERT, HAS_WEAPON, TARGET_VISIBLE, WEAPON_LOADED};
 use pointman_ai::{Goal, Plan, Planner, WorldState};
-use pointman_assets::SurfaceDraw;
-use pointman_render::{corridor_boxes, Camera, DrawList, MeshId, MeshInstance, PointLight};
+use pointman_render::{
+    corridor_boxes, Camera, DrawList, MeshId, MeshInstance, PointLight, TextureId,
+};
+
+pub struct LevelDraw {
+    pub first_index: u32,
+    pub index_count: u32,
+    pub color: [f32; 4],
+    pub texture: TextureId,
+}
 
 struct LoadedLevel {
     mesh: MeshId,
-    draws: Vec<SurfaceDraw>,
+    draws: Vec<LevelDraw>,
 }
 
 pub struct Replica {
@@ -71,7 +79,7 @@ impl Simulation {
     pub fn set_level(
         &mut self,
         mesh: MeshId,
-        draws: Vec<SurfaceDraw>,
+        draws: Vec<LevelDraw>,
         min: Vec3,
         max: Vec3,
         spawn: Option<Vec3>,
@@ -195,6 +203,7 @@ impl Simulation {
                     index_count: draw.index_count,
                     transform: Mat4::IDENTITY,
                     color: Vec4::from_array(draw.color),
+                    texture: draw.texture,
                 });
             }
         } else {
