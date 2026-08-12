@@ -13,6 +13,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     Probe { archive: PathBuf },
+    Catalog { root: PathBuf },
     List { archive: PathBuf },
     Extract {
         archive: PathBuf,
@@ -25,6 +26,24 @@ enum Cmd {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
+        Cmd::Catalog { root } => {
+            let mount = pointman_game::GameMount::discover(&root);
+            let cat = mount.catalog();
+            println!(
+                "worlds {}  models {}  dds {}  materials {}  other {}",
+                cat.worlds.len(),
+                cat.models.len(),
+                cat.textures.len(),
+                cat.materials.len(),
+                cat.other
+            );
+            for (name, src) in &cat.worlds {
+                println!(
+                    "W  {name}  ({})",
+                    src.file_name().unwrap_or_default().to_string_lossy()
+                );
+            }
+        }
         Cmd::Probe { archive } => {
             let meta = std::fs::metadata(&archive)?;
             let h = ArchHeader::probe(&archive)?;

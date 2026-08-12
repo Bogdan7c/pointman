@@ -147,6 +147,7 @@ fn main() -> anyhow::Result<()> {
     let cfg = Config::load();
     if let Some(mount) = GameMount::from_config(&cfg) {
         mount.log_inventory();
+        mount.catalog().log_summary();
     } else {
         log::warn!(
             "F.E.A.R. install not found. Set POINTMAN_GAME_ROOT or copy pointman.toml.example → pointman.toml"

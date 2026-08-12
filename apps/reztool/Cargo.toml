@@ -6,5 +6,6 @@ license.workspace = true
 
 [dependencies]
 pointman-assets.workspace = true
+pointman-game.workspace = true
 clap.workspace = true
 anyhow.workspace = true

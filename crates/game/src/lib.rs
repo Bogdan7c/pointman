@@ -6,7 +6,7 @@ mod paths;
 pub use config::Config;
 pub use paths::{detect_game_root, STEAM_APP_ID, STEAM_FOLDER};
 
-use pointman_assets::{kind_from_path, ArchHeader, ResourceKind};
+use pointman_assets::{kind_from_path, ArchHeader, GameArchive, ResourceKind};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +14,34 @@ pub struct GameMount {
     pub root: PathBuf,
     pub archcfg: PathBuf,
     pub archives: Vec<PathBuf>,
+}
+
+#[derive(Debug, Default)]
+pub struct Catalog {
+    pub worlds: Vec<(String, PathBuf)>,
+    pub models: Vec<(String, PathBuf)>,
+    pub textures: Vec<(String, PathBuf)>,
+    pub materials: Vec<(String, PathBuf)>,
+    pub other: usize,
+}
+
+impl Catalog {
+    pub fn log_summary(&self) {
+        log::info!(
+            "catalog: {} worlds, {} models, {} dds, {} materials, {} other",
+            self.worlds.len(),
+            self.models.len(),
+            self.textures.len(),
+            self.materials.len(),
+            self.other
+        );
+        for (name, _) in self.worlds.iter().take(24) {
+            log::info!("  world {name}");
+        }
+        if self.worlds.len() > 24 {
+            log::info!("  … {} more worlds", self.worlds.len() - 24);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +119,49 @@ impl GameMount {
             self.archives.len(),
             bytes as f64 / (1024.0 * 1024.0 * 1024.0)
         );
+    }
+
+    /// Index packed assets without extracting payloads. Later Arch00 in archcfg win.
+    pub fn catalog(&self) -> Catalog {
+        use std::collections::HashMap;
+        let mut worlds = HashMap::new();
+        let mut models = HashMap::new();
+        let mut textures = HashMap::new();
+        let mut materials = HashMap::new();
+        let mut other = 0usize;
+        for path in &self.archives {
+            let Ok(archive) = GameArchive::open(path) else {
+                log::error!("catalog skip {}", path.display());
+                continue;
+            };
+            for name in archive.list() {
+                match kind_from_path(&name) {
+                    ResourceKind::WorldPacked => {
+                        worlds.insert(name, path.clone());
+                    }
+                    ResourceKind::ModelPacked => {
+                        models.insert(name, path.clone());
+                    }
+                    ResourceKind::TextureDds | ResourceKind::TexturePacked => {
+                        textures.insert(name, path.clone());
+                    }
+                    ResourceKind::MaterialPacked | ResourceKind::Material => {
+                        materials.insert(name, path.clone());
+                    }
+                    _ => other += 1,
+                }
+            }
+        }
+        let mut cat = Catalog {
+            worlds: worlds.into_iter().collect(),
+            models: models.into_iter().collect(),
+            textures: textures.into_iter().collect(),
+            materials: materials.into_iter().collect(),
+            other,
+        };
+        cat.worlds.sort_by(|a, b| a.0.cmp(&b.0));
+        cat.models.sort_by(|a, b| a.0.cmp(&b.0));
+        cat
     }
 }
 

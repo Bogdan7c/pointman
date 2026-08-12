@@ -22,8 +22,8 @@
 - [x] Workspace, Vulkan deferred, GOAP, Arch00/REZ, World00p header
 - [x] Steam-пути, `Default.archcfg`, probe архивов
 - [x] Нативный геймпад, схема Xbox 360
-- [ ] CI, `main`, remote
-- [ ] Индекс World00p/Model00p/DDS по архивам без полной распаковки
+- [x] CI, `main`, remote
+- [x] Индекс World00p/Model00p/DDS по архивам без полной распаковки
 
 ### 1. Мир на экране
 - [ ] Render surfaces из `World00p` (vertex blocks, materials)
