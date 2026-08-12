@@ -103,11 +103,12 @@ fn main() -> anyhow::Result<()> {
                 Ok(models) => {
                     if let Some(bsp) = models.physics() {
                         println!(
-                            "PhysicsBSP {}  points {}  polys {}  tris {}",
+                            "PhysicsBSP {}  points {}  polys {}  clip tris {}  blockers {}",
                             bsp.names.join(","),
                             bsp.points.len(),
                             bsp.polygons.len(),
-                            models.triangles().len()
+                            models.triangles().len(),
+                            models.blockers.len()
                         );
                     } else {
                         println!("PhysicsBSP missing");

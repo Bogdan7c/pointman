@@ -27,6 +27,7 @@ pub struct WorldModels {
     pub max: Vec3,
     pub planes: Vec<Vec3>,
     pub models: Vec<WorldBsp>,
+    pub blockers: Vec<[Vec3; 3]>,
 }
 
 impl WorldModels {
@@ -80,18 +81,21 @@ impl WorldModels {
 
         let mut models = Vec::new();
         for i in 0..bsp_count {
-            let mut bsp = read_bsp(&mut c)?;
-            bsp.names = std::mem::take(&mut names[i]);
             if i == physics {
+                let mut bsp = read_bsp(&mut c)?;
+                bsp.names = std::mem::take(&mut names[i]);
                 models.push(bsp);
-                break;
+            } else {
+                skip_bsp(&mut c)?;
             }
         }
+        let blockers = read_blockers(&mut c).unwrap_or_default();
         Ok(Self {
             min,
             max,
             planes,
             models,
+            blockers,
         })
     }
 
@@ -100,33 +104,11 @@ impl WorldModels {
     }
 
     pub fn triangles(&self) -> Vec<[Vec3; 3]> {
-        let Some(bsp) = self.physics() else {
-            return Vec::new();
-        };
         let mut out = Vec::new();
-        for poly in &bsp.polygons {
-            if poly.verts.len() < 3 {
-                continue;
-            }
-            let Some(&i0) = poly.verts.first() else {
-                continue;
-            };
-            let p0 = match bsp.points.get(i0 as usize) {
-                Some(p) => *p,
-                None => continue,
-            };
-            for pair in poly.verts.windows(2).skip(1) {
-                let ia = pair[0];
-                let ib = pair[1];
-                let Some(&a) = bsp.points.get(ia as usize) else {
-                    continue;
-                };
-                let Some(&b) = bsp.points.get(ib as usize) else {
-                    continue;
-                };
-                out.push([p0, a, b]);
-            }
+        if let Some(bsp) = self.physics() {
+            fan_polys(&bsp.points, &bsp.polygons, &mut out);
         }
+        out.extend_from_slice(&self.blockers);
         out
     }
 }
@@ -171,6 +153,76 @@ fn read_bsp(c: &mut Cursor<&[u8]>) -> Result<WorldBsp, AssetError> {
         points,
         polygons,
     })
+}
+
+fn skip_bsp(c: &mut Cursor<&[u8]>) -> Result<(), AssetError> {
+    let _id = crate::read_u32(c)?;
+    let point_count = crate::read_u32(c)? as usize;
+    let polygon_count = crate::read_u32(c)? as usize;
+    let _unk = crate::read_u32(c)?;
+    let node_count = crate::read_u32(c)? as usize;
+    c.seek(SeekFrom::Current(24))?;
+    let _zero = crate::read_u32(c)?;
+    let mut vert_counts = vec![0u8; polygon_count];
+    c.read_exact(&mut vert_counts)?;
+    for count in vert_counts {
+        let skip = 12i64 + 4 * i64::from(count);
+        c.seek(SeekFrom::Current(skip))?;
+    }
+    c.seek(SeekFrom::Current(node_count as i64 * 12 + point_count as i64 * 12))?;
+    Ok(())
+}
+
+fn fan_polys(points: &[Vec3], polygons: &[BspPoly], out: &mut Vec<[Vec3; 3]>) {
+    for poly in polygons {
+        if poly.verts.len() < 3 {
+            continue;
+        }
+        let Some(&i0) = poly.verts.first() else {
+            continue;
+        };
+        let Some(&p0) = points.get(i0 as usize) else {
+            continue;
+        };
+        for pair in poly.verts.windows(2).skip(1) {
+            let Some(&a) = points.get(pair[0] as usize) else {
+                continue;
+            };
+            let Some(&b) = points.get(pair[1] as usize) else {
+                continue;
+            };
+            out.push([p0, a, b]);
+        }
+    }
+}
+
+fn read_blockers(c: &mut Cursor<&[u8]>) -> Result<Vec<[Vec3; 3]>, AssetError> {
+    let poly_count = crate::read_u32(c)? as usize;
+    let _unk = crate::read_u32(c)?;
+    if poly_count > 10_000 {
+        return Err(AssetError::Truncated("blocker count"));
+    }
+    let mut tris = Vec::new();
+    for _ in 0..poly_count {
+        let _normal = read_vec3(c)?;
+        let _distance = read_f32(c)?;
+        let nverts = crate::read_u32(c)? as usize;
+        if nverts > 256 {
+            return Err(AssetError::Truncated("blocker verts"));
+        }
+        let mut verts = Vec::with_capacity(nverts);
+        for _ in 0..nverts {
+            verts.push(read_vec3(c)?);
+        }
+        if verts.len() < 3 {
+            continue;
+        }
+        let p0 = verts[0];
+        for pair in verts.windows(2).skip(1) {
+            tris.push([p0, pair[0], pair[1]]);
+        }
+    }
+    Ok(tris)
 }
 
 fn read_vec3(c: &mut Cursor<&[u8]>) -> Result<Vec3, AssetError> {
@@ -251,11 +303,20 @@ mod tests {
         write_vec3(&mut body, Vec3::new(0.0, 0.0, 0.0));
         write_vec3(&mut body, Vec3::new(10.0, 0.0, 0.0));
         write_vec3(&mut body, Vec3::new(0.0, 0.0, 10.0));
+        body.extend_from_slice(&1u32.to_le_bytes());
+        body.extend_from_slice(&3u32.to_le_bytes());
+        write_vec3(&mut body, Vec3::Y);
+        body.extend_from_slice(&0f32.to_le_bytes());
+        body.extend_from_slice(&3u32.to_le_bytes());
+        write_vec3(&mut body, Vec3::new(20.0, -10.0, 20.0));
+        write_vec3(&mut body, Vec3::new(30.0, -10.0, 20.0));
+        write_vec3(&mut body, Vec3::new(20.0, -10.0, 30.0));
 
         bytes.extend_from_slice(&body);
         let models = WorldModels::parse(&bytes).unwrap();
         assert_eq!(models.physics().unwrap().names, ["PhysicsBSP"]);
-        assert_eq!(models.triangles().len(), 1);
+        assert_eq!(models.blockers.len(), 1);
+        assert_eq!(models.triangles().len(), 2);
     }
 
     fn write_vec3(buf: &mut Vec<u8>, v: Vec3) {

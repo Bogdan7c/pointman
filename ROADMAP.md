@@ -28,8 +28,8 @@
 ### 1. Мир на экране — в работе
 - [x] Render surfaces из `World00p` (vertex blocks, materials)
 - [x] DDS → Vulkan, `Mat00` diffuse (BC1/BC2/BC3, UV, REPEAT)
-- [ ] `Mat00` spec/normal — после коллизии
-- [x] Камера/коллизия по BSP, не сквозь стены (PhysicsBSP; отдельные worldmodel-двери ещё нет)
+- [ ] `Mat00` spec/normal — следующий пункт
+- [x] Камера/коллизия по BSP, не сквозь стены (PhysicsBSP + world-space blockers; капсула 40 см как FEAR AABB; двери-worldmodel ещё нет)
 - [x] Загрузка Intro / первой карты кампании (`Worlds/Release/Intro.World00p`)
 
 ### 2. Игрок 1:1

@@ -174,7 +174,7 @@ impl Simulation {
             self.camera.position = clip.move_eye(
                 self.camera.position,
                 wish,
-                0.32 * self.unit,
+                0.40 * self.unit,
                 eye_h,
                 dt,
                 9.8 * self.unit,

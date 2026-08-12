@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn does_not_walk_through_wall() {
         let mesh = wall_and_floor();
-        let radius = 32.0;
+        let radius = 40.0;
         let eye_h = 160.0;
         let mut eye = Vec3::new(0.0, 160.0, 0.0);
         let mut vy = 0.0;
@@ -215,7 +215,7 @@ mod tests {
         let mut eye = Vec3::new(0.0, 400.0, 0.0);
         let mut vy = 0.0;
         for _ in 0..45 {
-            eye = mesh.move_eye(eye, Vec3::ZERO, 32.0, 160.0, 1.0 / 30.0, 980.0, &mut vy);
+            eye = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 980.0, &mut vy);
         }
         assert!(
             (eye.y - 160.0).abs() < 24.0,
