@@ -2,13 +2,14 @@ mod gamepad;
 
 use anyhow::Context;
 use gamepad::Devices;
-use glam::Vec2;
+use glam::{Mat4, Vec2};
 use pointman_assets::{
-    archive_key, DdsFormat, DdsImage, Material, WorldModels, WorldObjects, WorldRender,
+    archive_key, material_key, DdsFormat, DdsImage, Material, WorldBsp, WorldModels, WorldObjects,
+    WorldRender,
 };
-use pointman_engine::{LevelDraw, LevelLight, Simulation};
+use pointman_engine::{LevelDraw, LevelLight, LevelProp, Simulation};
 use pointman_game::{AssetIndex, Config, GameMount, INTRO_WORLD};
-use pointman_render::{Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
+use pointman_render::{tbn_from_normal, Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
 use std::collections::HashMap;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -250,8 +251,8 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         );
                     }
                     let triangles = WorldModels::parse(&bytes)
-                        .map(|m| {
-                            if let Some(bsp) = m.physics() {
+                        .map(|models| {
+                            if let Some(bsp) = models.physics() {
                                 log::info!(
                                     "PhysicsBSP {}  points {}  polys {}",
                                     bsp.names.join(","),
@@ -259,12 +260,19 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                                     bsp.polygons.len()
                                 );
                             }
-                            m.triangles()
+                            let props = upload_world_models(renderer, &models, &objects);
+                            log::info!(
+                                "world models: {} bsp, {} instances",
+                                models.models.len(),
+                                props.len()
+                            );
+                            (models.triangles(), props)
                         })
                         .unwrap_or_else(|err| {
                             log::error!("PhysicsBSP: {err}");
-                            Vec::new()
+                            (Vec::new(), Vec::new())
                         });
+                    let (triangles, props) = triangles;
                     sim.set_level(
                         mesh,
                         level_draws,
@@ -283,6 +291,7 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                             })
                             .collect(),
                         objects.ambient,
+                        props,
                     );
                 }
                 Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
@@ -304,7 +313,10 @@ fn maps_for(
     if let Some(maps) = mat_cache.get(material) {
         return *maps;
     }
-    let maps = load_maps(index, renderer, dds_cache, material).unwrap_or(MaterialMaps::fallback());
+    let maps = load_maps(index, renderer, dds_cache, &material_key(material)).unwrap_or_else(|err| {
+        log::warn!("material {material}: {err}");
+        MaterialMaps::fallback()
+    });
     mat_cache.insert(material.to_string(), maps);
     maps
 }
@@ -374,7 +386,86 @@ fn load_slot(
     let Some(path) = slot.filter(|s| !s.is_empty()) else {
         return fallback;
     };
-    upload_dds(index, renderer, dds_cache, path).unwrap_or(fallback)
+    upload_dds(index, renderer, dds_cache, path).unwrap_or_else(|err| {
+        log::warn!("dds {path}: {err}");
+        fallback
+    })
+}
+
+fn upload_world_models(
+    renderer: &mut Renderer,
+    models: &WorldModels,
+    objects: &WorldObjects,
+) -> Vec<LevelProp> {
+    let mut gpu = HashMap::new();
+    for bsp in &models.models {
+        if bsp.is_physics() {
+            continue;
+        }
+        let Some((verts, indices)) = bsp_mesh(bsp) else {
+            continue;
+        };
+        match renderer.upload_mesh(&verts, &indices) {
+            Ok(mesh) => {
+                for name in &bsp.names {
+                    gpu.insert(name.to_ascii_lowercase(), mesh);
+                }
+            }
+            Err(err) => log::warn!("worldmodel mesh {}: {err}", bsp.names.join(",")),
+        }
+    }
+    let mut props = Vec::new();
+    for place in &objects.models {
+        if place.hidden {
+            continue;
+        }
+        let Some(&mesh) = gpu.get(&place.name.to_ascii_lowercase()) else {
+            continue;
+        };
+        props.push(LevelProp {
+            mesh,
+            transform: Mat4::from_rotation_translation(place.rotation, place.pos),
+            color: name_color(&place.name),
+        });
+    }
+    props
+}
+
+fn bsp_mesh(bsp: &WorldBsp) -> Option<(Vec<Vertex>, Vec<u32>)> {
+    let tris = bsp.triangles();
+    if tris.is_empty() {
+        return None;
+    }
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    for [a, b, c] in tris {
+        let normal = (b - a).cross(c - a).normalize_or_zero();
+        let (tangent, binormal) = tbn_from_normal(normal.to_array());
+        let base = vertices.len() as u32;
+        for pos in [a, b, c] {
+            vertices.push(Vertex {
+                pos: pos.to_array(),
+                normal: normal.to_array(),
+                uv: [0.0, 0.0],
+                tangent,
+                binormal,
+            });
+        }
+        indices.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+    Some((vertices, indices))
+}
+
+fn name_color(name: &str) -> [f32; 4] {
+    let h = name
+        .bytes()
+        .fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ u32::from(b));
+    [
+        0.18 + ((h & 0xFF) as f32 / 255.0) * 0.45,
+        0.16 + (((h >> 8) & 0xFF) as f32 / 255.0) * 0.40,
+        0.14 + (((h >> 16) & 0xFF) as f32 / 255.0) * 0.38,
+        1.0,
+    ]
 }
 
 fn upload_dds(

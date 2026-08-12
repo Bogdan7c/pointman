@@ -1,8 +1,10 @@
 mod clip;
 mod input;
+mod player;
 
 pub use clip::ClipMesh;
 pub use input::{xbox360, Input};
+pub use player::{CROUCH_SPEED_CM, JUMP_VEL_CM, RUN_SPEED_CM};
 
 use glam::{Mat4, Vec3, Vec4};
 use pointman_ai::replica::{self, ALERT, HAS_WEAPON, TARGET_VISIBLE, WEAPON_LOADED};
@@ -27,9 +29,17 @@ pub struct LevelLight {
     pub color: Vec3,
 }
 
+/// BSP WorldModel, поставленный в мир. Пока без своих Mat00 — цвет-хеш, чтобы дыры были видны.
+pub struct LevelProp {
+    pub mesh: MeshId,
+    pub transform: Mat4,
+    pub color: [f32; 4],
+}
+
 struct LoadedLevel {
     mesh: MeshId,
     draws: Vec<LevelDraw>,
+    props: Vec<LevelProp>,
     clip: Option<ClipMesh>,
     lights: Vec<LevelLight>,
     ambient: Vec3,
@@ -57,6 +67,10 @@ pub struct Simulation {
     /// World-space floor used for eye height (LithTech Y-up).
     floor_y: f32,
     vertical_speed: f32,
+    /// Стоим на полу (прошлый кадр). Нужен, чтобы прыжок не требовал угадывать Y.
+    grounded: bool,
+    /// Lean −1..+1. Капсула не едет — смещение только в `draw_list`.
+    lean: f32,
     level: Option<LoadedLevel>,
 }
 
@@ -88,6 +102,8 @@ impl Simulation {
             unit: 1.0,
             floor_y: 0.0,
             vertical_speed: 0.0,
+            grounded: true,
+            lean: 0.0,
             level: None,
         }
     }
@@ -103,8 +119,12 @@ impl Simulation {
         triangles: Vec<[Vec3; 3]>,
         lights: Vec<LevelLight>,
         ambient: Vec3,
+        props: Vec<LevelProp>,
     ) {
         self.vertical_speed = 0.0;
+        self.grounded = true;
+        self.lean = 0.0;
+        self.crouch = false;
         self.unit = 100.0;
         let clip = if triangles.is_empty() {
             None
@@ -115,6 +135,7 @@ impl Simulation {
         self.level = Some(LoadedLevel {
             mesh,
             draws,
+            props,
             clip,
             lights,
             ambient,
@@ -133,10 +154,11 @@ impl Simulation {
         self.camera.z_far = 12000.0;
         self.replica.position = self.camera.position + Vec3::new(2.0, 0.0, 4.0) * self.unit;
         log::info!(
-            "level camera {:?} yaw {:.1}°  lights {}  ambient {:?}  extent {:?}",
+            "level camera {:?} yaw {:.1}°  lights {}  props {}  ambient {:?}  extent {:?}",
             self.camera.position,
             self.camera.yaw.to_degrees(),
             self.level.as_ref().map(|l| l.lights.len()).unwrap_or(0),
+            self.level.as_ref().map(|l| l.props.len()).unwrap_or(0),
             ambient,
             extent
         );
@@ -151,9 +173,6 @@ impl Simulation {
     }
 
     pub fn tick(&mut self, real_dt: f32, input: &mut Input) {
-        if input.crouch {
-            self.crouch = !self.crouch;
-        }
         if input.flashlight {
             self.flashlight = !self.flashlight;
         }
@@ -167,45 +186,76 @@ impl Simulation {
         if input.grenade {
             log::info!("grenade");
         }
-        if input.jump {
-            log::debug!("jump");
-        }
 
         let dt = real_dt * self.time_scale();
         self.time += dt;
         self.camera.add_look(input.look.x, input.look.y);
 
-        let mut wish = self.camera.forward() * input.move_axis.y + self.camera.right() * input.move_axis.x;
-        wish.y = 0.0;
-        let speed = if self.crouch {
-            2.2
-        } else if input.move_axis.length() > 0.9 {
-            4.2
-        } else {
-            2.4
-        } * self.unit;
-        if wish.length_squared() > 0.0 {
-            wish = wish.normalize() * speed * input.move_axis.length().min(1.0);
+        let radius = player::scale_cm(self.unit, player::CAPSULE_RADIUS_CM);
+        if input.crouch {
+            if self.crouch {
+                // Встать, если потолок не зажимает стоячую капсулу.
+                let raised = self.camera.position + Vec3::Y * player::stand_raise(self.unit);
+                let stand_h = player::eye_height(false, self.unit);
+                let fits = self
+                    .level
+                    .as_ref()
+                    .and_then(|level| level.clip.as_ref())
+                    .map(|clip| clip.eye_fits(raised, radius, stand_h))
+                    .unwrap_or(true);
+                if fits {
+                    self.crouch = false;
+                    self.camera.position = raised;
+                }
+            } else {
+                self.crouch = true;
+                self.camera.position.y -= player::stand_raise(self.unit);
+            }
         }
-        let eye_h = if self.crouch {
-            1.05 * self.unit
-        } else {
-            1.6 * self.unit
-        };
+
+        let wish = player::wish_velocity(
+            self.camera.forward(),
+            self.camera.right(),
+            input.move_axis,
+            self.crouch,
+            self.unit,
+        );
+        if let Some(impulse) = player::jump_impulse(self.grounded, self.crouch, input.jump, self.unit)
+        {
+            self.vertical_speed = impulse;
+            self.grounded = false;
+        }
+
+        let eye_h = player::eye_height(self.crouch, self.unit);
+        let gravity = player::scale_cm(self.unit, player::PLAYER_GRAVITY_CM);
         if let Some(clip) = self.level.as_ref().and_then(|l| l.clip.as_ref()) {
-            self.camera.position = clip.move_eye(
+            let step = clip.move_eye(
                 self.camera.position,
                 wish,
-                0.40 * self.unit,
+                radius,
                 eye_h,
                 dt,
-                9.8 * self.unit,
+                gravity,
                 &mut self.vertical_speed,
             );
+            self.camera.position = step.eye;
+            self.grounded = step.grounded;
         } else {
+            self.vertical_speed -= gravity * dt;
             self.camera.position += wish * dt;
-            self.camera.position.y = self.floor_y + eye_h;
+            self.camera.position.y += self.vertical_speed * dt;
+            let min_eye = self.floor_y + eye_h;
+            if self.camera.position.y <= min_eye {
+                self.camera.position.y = min_eye;
+                self.vertical_speed = 0.0;
+                self.grounded = true;
+            } else {
+                self.grounded = false;
+            }
         }
+
+        let moving = input.move_axis.length() > 0.05;
+        self.lean = player::step_lean(self.lean, input.lean, moving, self.grounded, dt);
 
         let dist = self.camera.position.distance(self.replica.position);
         let alert = if dist < 6.0 * self.unit {
@@ -261,6 +311,13 @@ impl Simulation {
                     spec_power: draw.spec_power,
                 });
             }
+            for prop in &level.props {
+                instances.push(MeshInstance::new(
+                    prop.mesh,
+                    prop.transform,
+                    Vec4::from_array(prop.color),
+                ));
+            }
         } else {
             instances.extend(corridor_boxes().into_iter().map(|(center, scale, color)| {
                 MeshInstance::new(
@@ -282,15 +339,17 @@ impl Simulation {
             ));
         }
 
-        let flashlight = self.camera.position + self.camera.forward() * 0.4 * self.unit;
-        let flash_i = if self.flashlight { 12.0 } else { 0.0 };
+        let camera = player::apply_lean(&self.camera, self.lean, self.unit);
+        let flashlight = camera.position + camera.forward() * 0.4 * self.unit;
         let mut lights = Vec::new();
         if self.flashlight {
             lights.push(PointLight {
                 position: flashlight,
-                radius: 14.0 * self.unit,
+                radius: player::scale_cm(self.unit, player::FLASH_RADIUS_CM),
                 color: Vec3::new(1.0, 0.95, 0.85),
-                intensity: flash_i,
+                intensity: player::FLASH_INTENSITY,
+                direction: camera.forward(),
+                outer_cos: player::FLASH_OUTER_COS,
             });
         }
         let ambient;
@@ -300,21 +359,21 @@ impl Simulation {
             lights.extend(nearest_lights(&level.lights, self.camera.position, slots));
         } else {
             ambient = Vec3::splat(0.12);
-            lights.push(PointLight {
-                position: self.camera.position + Vec3::Y * 0.8 * self.unit,
-                radius: 8.0 * self.unit,
-                color: Vec3::new(1.0, 0.55, 0.25),
-                intensity: 4.0 + (self.time * 6.0).sin().abs() * 2.0,
-            });
-            lights.push(PointLight {
-                position: self.replica.position + Vec3::Y * 0.6 * self.unit,
-                radius: 5.0 * self.unit,
-                intensity: 2.5,
-                color: Vec3::new(0.4, 0.7, 1.0),
-            });
+            lights.push(PointLight::omni(
+                self.camera.position + Vec3::Y * 0.8 * self.unit,
+                8.0 * self.unit,
+                Vec3::new(1.0, 0.55, 0.25),
+                4.0 + (self.time * 6.0).sin().abs() * 2.0,
+            ));
+            lights.push(PointLight::omni(
+                self.replica.position + Vec3::Y * 0.6 * self.unit,
+                5.0 * self.unit,
+                Vec3::new(0.4, 0.7, 1.0),
+                2.5,
+            ));
         }
         DrawList {
-            camera: self.camera.clone(),
+            camera,
             instances,
             lights,
             ambient,
@@ -333,11 +392,13 @@ fn nearest_lights(lights: &[LevelLight], pos: Vec3, n: usize) -> Vec<PointLight>
     order
         .into_iter()
         .take(n)
-        .map(|i| PointLight {
-            position: lights[i].position,
-            radius: lights[i].radius,
-            color: lights[i].color,
-            intensity: 1.0,
+        .map(|i| {
+            PointLight::omni(
+                lights[i].position,
+                lights[i].radius,
+                lights[i].color,
+                1.0,
+            )
         })
         .collect()
 }
@@ -351,6 +412,43 @@ impl Default for Simulation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::Vec2;
+
+    fn open_floor() -> Vec<[Vec3; 3]> {
+        vec![
+            [
+                Vec3::new(-2000.0, 0.0, -2000.0),
+                Vec3::new(2000.0, 0.0, -2000.0),
+                Vec3::new(2000.0, 0.0, 2000.0),
+            ],
+            [
+                Vec3::new(-2000.0, 0.0, -2000.0),
+                Vec3::new(2000.0, 0.0, 2000.0),
+                Vec3::new(-2000.0, 0.0, 2000.0),
+            ],
+        ]
+    }
+
+    fn spawn_on_floor(sim: &mut Simulation) {
+        sim.set_level(
+            MeshId::CUBE,
+            vec![],
+            Vec3::new(-2000.0, 0.0, -2000.0),
+            Vec3::new(2000.0, 400.0, 2000.0),
+            Some(Vec3::new(0.0, 90.0, 0.0)),
+            Some(0.0),
+            open_floor(),
+            vec![],
+            Vec3::splat(0.1),
+            vec![],
+        );
+    }
+
+    fn tick_frames(sim: &mut Simulation, input: &mut Input, frames: u32) {
+        for _ in 0..frames {
+            sim.tick(1.0 / 30.0, input);
+        }
+    }
 
     #[test]
     fn nearest_lights_picks_closest() {
@@ -375,5 +473,134 @@ mod tests {
         assert_eq!(picked.len(), 2);
         assert_eq!(picked[0].color, Vec3::X);
         assert_eq!(picked[1].color, Vec3::Y);
+    }
+
+    #[test]
+    fn full_stick_walks_about_400_cm_per_second() {
+        let mut sim = Simulation::new();
+        spawn_on_floor(&mut sim);
+        let start = sim.camera.position;
+        let mut input = Input::default();
+        input.move_axis = Vec2::new(0.0, 1.0);
+        tick_frames(&mut sim, &mut input, 30);
+        let dx = sim.camera.position.x - start.x;
+        let dz = sim.camera.position.z - start.z;
+        let dist = (dx * dx + dz * dz).sqrt();
+        assert!(
+            (dist - 400.0).abs() < 50.0,
+            "expected ~400 cm in 1s, got {dist}"
+        );
+    }
+
+    #[test]
+    fn crouch_lowers_eye_to_105_cm() {
+        let mut sim = Simulation::new();
+        spawn_on_floor(&mut sim);
+        let mut input = Input::default();
+        input.crouch = true;
+        sim.tick(1.0 / 30.0, &mut input);
+        assert!(
+            (sim.camera.position.y - 105.0).abs() < 8.0,
+            "crouch eye should be ~105, got {}",
+            sim.camera.position.y
+        );
+    }
+
+    #[test]
+    fn jump_leaves_ground_and_lands() {
+        let mut sim = Simulation::new();
+        spawn_on_floor(&mut sim);
+        tick_frames(&mut sim, &mut Input::default(), 5);
+        let start_y = sim.camera.position.y;
+        let mut input = Input::default();
+        input.jump = true;
+        sim.tick(1.0 / 30.0, &mut input);
+        assert!(
+            sim.camera.position.y > start_y + 4.0,
+            "jump must lift the camera, start {start_y} now {}",
+            sim.camera.position.y
+        );
+        assert!(!sim.grounded);
+        tick_frames(&mut sim, &mut Input::default(), 60);
+        assert!(sim.grounded, "must land after the hop");
+        assert!(
+            (sim.camera.position.y - 160.0).abs() < 24.0,
+            "landed eye should be ~160, got {}",
+            sim.camera.position.y
+        );
+    }
+
+    #[test]
+    fn lean_offsets_camera_not_capsule() {
+        let mut sim = Simulation::new();
+        spawn_on_floor(&mut sim);
+        let eye = sim.camera.position;
+        let mut input = Input::default();
+        input.lean = 1.0;
+        for _ in 0..15 {
+            sim.tick(0.02, &mut input);
+        }
+        let drawn = sim.draw_list();
+        let offset = drawn.camera.position - sim.camera.position;
+        assert!(
+            offset.length() > 10.0,
+            "lean must shift the view camera, offset {offset}"
+        );
+        assert!(
+            drawn.camera.roll.abs() > 0.15,
+            "lean must roll the camera, roll {}",
+            drawn.camera.roll
+        );
+        let feet_shift = (sim.camera.position.x - eye.x).abs() + (sim.camera.position.z - eye.z).abs();
+        assert!(
+            feet_shift < 2.0,
+            "lean must not walk the capsule, shift {feet_shift}"
+        );
+    }
+
+    #[test]
+    fn flashlight_is_a_camera_spot() {
+        let mut sim = Simulation::new();
+        spawn_on_floor(&mut sim);
+        let list = sim.draw_list();
+        let flash = list
+            .lights
+            .iter()
+            .find(|light| light.outer_cos > 0.0)
+            .expect("flashlight should be a spot");
+        assert!(
+            flash.direction.dot(list.camera.forward()) > 0.95,
+            "beam must follow the camera"
+        );
+        assert!((flash.radius - 1400.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn world_model_prop_is_drawn() {
+        let mut sim = Simulation::new();
+        sim.set_level(
+            MeshId::CUBE,
+            vec![],
+            Vec3::ZERO,
+            Vec3::ONE,
+            Some(Vec3::new(0.0, 90.0, 0.0)),
+            Some(0.0),
+            vec![],
+            vec![],
+            Vec3::splat(0.1),
+            vec![LevelProp {
+                mesh: MeshId::CUBE,
+                transform: Mat4::from_translation(Vec3::new(50.0, 0.0, 0.0)),
+                color: [1.0, 0.2, 0.1, 1.0],
+            }],
+        );
+        let list = sim.draw_list();
+        let prop = list
+            .instances
+            .iter()
+            .find(|inst| (inst.color.x - 1.0).abs() < 0.01)
+            .expect("world model instance missing from draw list");
+        let translation = prop.transform.to_scale_rotation_translation().2;
+        assert!((translation.x - 50.0).abs() < 0.1);
     }
 }

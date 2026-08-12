@@ -24,6 +24,7 @@ struct FrameUbo {
     ambient: [f32; 4],
     pos_radius: [[f32; 4]; 8],
     color_intensity: [[f32; 4]; 8],
+    dir_cone: [[f32; 4]; 8],
     light_count: u32,
     _pad: [u32; 3],
 }
@@ -600,12 +601,19 @@ impl Renderer {
             ambient: [list.ambient.x, list.ambient.y, list.ambient.z, 1.0],
             pos_radius: [[0.0; 4]; 8],
             color_intensity: [[0.0; 4]; 8],
+            dir_cone: [[0.0; 4]; 8],
             light_count: list.lights.len().min(8) as u32,
             _pad: [0; 3],
         };
         for (i, light) in list.lights.iter().take(8).enumerate() {
             ubo.pos_radius[i] = [light.position.x, light.position.y, light.position.z, light.radius];
             ubo.color_intensity[i] = [light.color.x, light.color.y, light.color.z, light.intensity];
+            ubo.dir_cone[i] = [
+                light.direction.x,
+                light.direction.y,
+                light.direction.z,
+                light.outer_cos,
+            ];
         }
         let alloc = self.frames[frame_i]
             .ubo

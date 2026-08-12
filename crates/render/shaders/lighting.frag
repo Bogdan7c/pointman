@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform Frame {
     vec4 ambient;
     vec4 pos_radius[8];
     vec4 color_intensity[8];
+    vec4 dir_cone[8];
     uint light_count;
     uint _pad0;
     uint _pad1;
@@ -46,6 +47,16 @@ void main() {
         L /= max(dist, 0.0001);
         float att = clamp(1.0 - dist / radius, 0.0, 1.0);
         att *= att;
+        // Спот фонарика: xyz — направление луча, w — cos внешнего угла. w<=0 = omni.
+        vec3 cone_dir = frame.dir_cone[i].xyz;
+        float outer_cos = frame.dir_cone[i].w;
+        float spot = 1.0;
+        if (outer_cos > 0.0 && dot(cone_dir, cone_dir) > 0.01) {
+            float inner_cos = mix(outer_cos, 1.0, 0.4);
+            float cd = dot(normalize(cone_dir), -L);
+            spot = smoothstep(outer_cos, inner_cos, cd);
+        }
+        att *= spot;
         float ndotl = max(dot(n, L), 0.0);
         float spec_term = pow(max(dot(n, normalize(L + view)), 0.0), power);
         vec3 col = frame.color_intensity[i].rgb * frame.color_intensity[i].a;

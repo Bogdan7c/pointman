@@ -57,6 +57,23 @@ pub struct PointLight {
     pub radius: f32,
     pub color: Vec3,
     pub intensity: f32,
+    /// Куда светит спот. `Vec3::ZERO` + `outer_cos == 0` = обычная точка (лампы мира).
+    pub direction: Vec3,
+    /// cos половины внешнего угла конуса. 0 = omni.
+    pub outer_cos: f32,
+}
+
+impl PointLight {
+    pub fn omni(position: Vec3, radius: f32, color: Vec3, intensity: f32) -> Self {
+        Self {
+            position,
+            radius,
+            color,
+            intensity,
+            direction: Vec3::ZERO,
+            outer_cos: 0.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

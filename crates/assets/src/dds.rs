@@ -12,6 +12,7 @@ const MASK_R: u32 = 0x00FF_0000;
 const MASK_G: u32 = 0x0000_FF00;
 const MASK_B: u32 = 0x0000_00FF;
 const MASK_A: u32 = 0xFF00_0000;
+const DDSCAPS2_CUBEMAP: u32 = 0x200;
 const HEADER_SIZE: usize = 128; // magic + 124-byte DDS_HEADER
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,10 @@ impl DdsImage {
         let mask_g = u32::from_le_bytes(bytes[96..100].try_into().unwrap());
         let mask_b = u32::from_le_bytes(bytes[100..104].try_into().unwrap());
         let mask_a = u32::from_le_bytes(bytes[104..108].try_into().unwrap());
+        let caps2 = u32::from_le_bytes(bytes[112..116].try_into().unwrap());
+        if caps2 & DDSCAPS2_CUBEMAP != 0 {
+            return Err(AssetError::Invalid("DDS cubemap"));
+        }
         let format = match four_cc {
             DXT1 => DdsFormat::Bc1,
             DXT3 => DdsFormat::Bc2,
@@ -161,5 +166,22 @@ mod tests {
         assert_eq!(img.format, DdsFormat::Bgra8);
         assert_eq!(img.mip_count, 1);
         assert_eq!(img.bytes, [254, 127, 127, 30]);
+    }
+
+    #[test]
+    fn rejects_cubemap_as_2d() {
+        let mut bytes = vec![0u8; HEADER_SIZE + 8];
+        bytes[0..4].copy_from_slice(&DDS_MAGIC.to_le_bytes());
+        bytes[4..8].copy_from_slice(&124u32.to_le_bytes());
+        bytes[12..16].copy_from_slice(&4u32.to_le_bytes());
+        bytes[16..20].copy_from_slice(&4u32.to_le_bytes());
+        bytes[28..32].copy_from_slice(&1u32.to_le_bytes());
+        bytes[84..88].copy_from_slice(&DXT1.to_le_bytes());
+        bytes[112..116].copy_from_slice(&DDSCAPS2_CUBEMAP.to_le_bytes());
+        let err = DdsImage::parse(&bytes).unwrap_err();
+        assert!(
+            matches!(err, AssetError::Invalid("DDS cubemap")),
+            "got {err}"
+        );
     }
 }

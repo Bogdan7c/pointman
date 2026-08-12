@@ -1,4 +1,4 @@
-//! Секция объектов World00p: GameStartPoint и лампы. Не полный object runtime.
+//! Секция объектов World00p: спавн, лампы и расстановка WorldModel. Не полный object runtime.
 
 use crate::world00p::WorldHeader;
 use crate::AssetError;
@@ -15,6 +15,18 @@ const PROP_QUAT: u32 = 6;
 const PROP_COMMAND: u32 = 7;
 const PROP_TEXT: u32 = 8;
 
+/// Типы, у которых геометрия — именованный BSP, а не Model00p.
+const WORLD_MODEL_TYPES: &[&str] = &[
+    "WorldModel",
+    "RotatingDoor",
+    "SlidingDoor",
+    "RotatingWorldModel",
+    "SlidingWorldModel",
+    "SlidingSwitch",
+    "RotatingSwitch",
+    "SpinningWorldModel",
+];
+
 #[derive(Debug, Clone)]
 pub struct GameStart {
     pub name: String,
@@ -30,10 +42,20 @@ pub struct WorldLight {
     pub color: Vec3,
 }
 
+/// Экземпляр BSP в мире: машины, двери, граффити, небо.
+#[derive(Debug, Clone)]
+pub struct WorldModelPlacement {
+    pub name: String,
+    pub pos: Vec3,
+    pub rotation: Quat,
+    pub hidden: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct WorldObjects {
     pub starts: Vec<GameStart>,
     pub lights: Vec<WorldLight>,
+    pub models: Vec<WorldModelPlacement>,
     pub ambient: Vec3,
 }
 
@@ -42,6 +64,7 @@ impl Default for WorldObjects {
         Self {
             starts: Vec::new(),
             lights: Vec::new(),
+            models: Vec::new(),
             ambient: Vec3::splat(0.1),
         }
     }
@@ -70,6 +93,7 @@ fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
     let count = crate::read_u32(&mut c)? as usize;
     let mut starts = Vec::new();
     let mut lights = Vec::new();
+    let mut models = Vec::new();
     let mut ambient = Vec3::splat(25.0 / 255.0);
     for _ in 0..count {
         let type_name = read_lt_string(&mut c)?;
@@ -90,11 +114,16 @@ fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
             if let Some(color) = bag.colour("AmbientLight") {
                 ambient = color / 255.0;
             }
+        } else if WORLD_MODEL_TYPES.iter().any(|t| *t == type_name) {
+            if let Some(place) = world_model_placement(&bag) {
+                models.push(place);
+            }
         }
     }
     Ok(WorldObjects {
         starts,
         lights,
+        models,
         ambient,
     })
 }
@@ -115,6 +144,17 @@ fn world_light(bag: &PropertyBag) -> Option<WorldLight> {
     })
 }
 
+fn world_model_placement(bag: &PropertyBag) -> Option<WorldModelPlacement> {
+    let pos = bag.vector("Pos")?;
+    let q = bag.quat("Rotation").unwrap_or([0.0, 0.0, 0.0, 1.0]);
+    Some(WorldModelPlacement {
+        name: bag.string("Name").unwrap_or("WorldModel").to_string(),
+        pos,
+        rotation: Quat::from_xyzw(q[0], q[1], q[2], q[3]),
+        hidden: bag.int("StartHidden").unwrap_or(0) != 0,
+    })
+}
+
 fn yaw_from_xyzw(q: [f32; 4]) -> f32 {
     let rot = Quat::from_xyzw(q[0], q[1], q[2], q[3]);
     let fwd = rot * Vec3::Z;
@@ -130,7 +170,6 @@ enum PropValue {
     Vector(Vec3),
     Colour(Vec3),
     Float(f32),
-    #[allow(dead_code)]
     Int(i32),
     Quat([f32; 4]),
 }
@@ -160,6 +199,13 @@ impl PropertyBag {
     fn float(&self, name: &str) -> Option<f32> {
         self.values.iter().find_map(|(n, v)| match v {
             PropValue::Float(p) if n.eq_ignore_ascii_case(name) => Some(*p),
+            _ => None,
+        })
+    }
+
+    fn int(&self, name: &str) -> Option<i32> {
+        self.values.iter().find_map(|(n, v)| match v {
+            PropValue::Int(p) if n.eq_ignore_ascii_case(name) => Some(*p),
             _ => None,
         })
     }
@@ -264,9 +310,10 @@ mod tests {
         world[12..16].copy_from_slice(&56u32.to_le_bytes());
 
         let mut section = Vec::new();
-        section.extend_from_slice(&2u32.to_le_bytes());
+        section.extend_from_slice(&3u32.to_le_bytes());
         write_start(&mut section);
         write_fill(&mut section);
+        write_world_model(&mut section, "Crate00", false);
         world.extend_from_slice(&section);
 
         let objects = WorldObjects::parse(&world).unwrap();
@@ -277,6 +324,23 @@ mod tests {
         assert_eq!(objects.lights.len(), 1);
         assert!((objects.lights[0].color.x - (126.0 / 255.0) * 0.5).abs() < 0.01);
         assert_eq!(objects.lights[0].radius, 500.0);
+        assert_eq!(objects.models.len(), 1);
+        assert_eq!(objects.models[0].name, "Crate00");
+        assert_eq!(objects.models[0].pos, Vec3::new(10.0, 20.0, 30.0));
+        assert!(!objects.models[0].hidden);
+    }
+
+    #[test]
+    fn hidden_worldmodel_is_marked() {
+        let mut world = vec![0u8; 56];
+        world[0..4].copy_from_slice(&FEAR_WORLD_VERSION.to_le_bytes());
+        world[12..16].copy_from_slice(&56u32.to_le_bytes());
+        let mut section = Vec::new();
+        section.extend_from_slice(&1u32.to_le_bytes());
+        write_world_model(&mut section, "HiddenDoor", true);
+        world.extend_from_slice(&section);
+        let objects = WorldObjects::parse(&world).unwrap();
+        assert!(objects.models[0].hidden);
     }
 
     #[test]
@@ -336,6 +400,27 @@ mod tests {
         write_prop(buf, col_key, PROP_COLOUR, col_val as u32);
         write_prop(buf, radius_key, PROP_FLOAT, radius.to_bits());
         write_prop(buf, scale_key, PROP_FLOAT, scale.to_bits());
+    }
+
+    fn write_world_model(buf: &mut Vec<u8>, name: &str, hidden: bool) {
+        write_lt(buf, "WorldModel");
+        let mut heap = Vec::new();
+        let name_key = push_cstr(&mut heap, "Name");
+        let name_val = push_cstr(&mut heap, name);
+        let pos_key = push_cstr(&mut heap, "Pos");
+        let pos_val = heap.len();
+        write_f32s(&mut heap, &[10.0, 20.0, 30.0]);
+        let rot_key = push_cstr(&mut heap, "Rotation");
+        let rot_val = heap.len();
+        write_f32s(&mut heap, &[0.0, 0.0, 0.0, 1.0]);
+        let hide_key = push_cstr(&mut heap, "StartHidden");
+        buf.extend_from_slice(&4u32.to_le_bytes());
+        buf.extend_from_slice(&(heap.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&heap);
+        write_prop(buf, name_key, PROP_STRING, name_val as u32);
+        write_prop(buf, pos_key, PROP_VECTOR, pos_val as u32);
+        write_prop(buf, rot_key, PROP_QUAT, rot_val as u32);
+        write_prop(buf, hide_key, PROP_INT, if hidden { 1 } else { 0 });
     }
 
     fn write_lt(buf: &mut Vec<u8>, s: &str) {

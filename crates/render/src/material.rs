@@ -4,7 +4,7 @@
 use crate::error::RenderError;
 use ash::{vk, Device};
 
-pub const MAX_MATERIALS: u32 = 1024;
+pub const MAX_MATERIALS: u32 = 4096;
 
 fn sampler_binding(binding: u32) -> vk::DescriptorSetLayoutBinding<'static> {
     vk::DescriptorSetLayoutBinding::default()

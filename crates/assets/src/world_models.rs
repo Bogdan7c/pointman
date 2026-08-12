@@ -74,20 +74,11 @@ impl WorldModels {
             planes.push(read_vec3(&mut c)?);
         }
 
-        let physics = names
-            .iter()
-            .position(|n| n.iter().any(|s| s.eq_ignore_ascii_case("PhysicsBSP")))
-            .unwrap_or(0);
-
         let mut models = Vec::new();
         for i in 0..bsp_count {
-            if i == physics {
-                let mut bsp = read_bsp(&mut c)?;
-                bsp.names = std::mem::take(&mut names[i]);
-                models.push(bsp);
-            } else {
-                skip_bsp(&mut c)?;
-            }
+            let mut bsp = read_bsp(&mut c)?;
+            bsp.names = std::mem::take(&mut names[i]);
+            models.push(bsp);
         }
         let blockers = read_blockers(&mut c).unwrap_or_default();
         Ok(Self {
@@ -100,15 +91,38 @@ impl WorldModels {
     }
 
     pub fn physics(&self) -> Option<&WorldBsp> {
-        self.models.first()
+        self.models.iter().find(|bsp| bsp.is_physics())
+    }
+
+    /// Клип: только PhysicsBSP + world-space blockers. Двери пока не входят.
+    pub fn triangles(&self) -> Vec<[Vec3; 3]> {
+        let mut out = Vec::new();
+        if let Some(bsp) = self.physics() {
+            out.extend(bsp.triangles());
+        }
+        out.extend_from_slice(&self.blockers);
+        out
+    }
+
+    pub fn mesh_named(&self, name: &str) -> Option<&WorldBsp> {
+        self.models.iter().find(|bsp| {
+            bsp.names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(name))
+        })
+    }
+}
+
+impl WorldBsp {
+    pub fn is_physics(&self) -> bool {
+        self.names
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case("PhysicsBSP"))
     }
 
     pub fn triangles(&self) -> Vec<[Vec3; 3]> {
         let mut out = Vec::new();
-        if let Some(bsp) = self.physics() {
-            fan_polys(&bsp.points, &bsp.polygons, &mut out);
-        }
-        out.extend_from_slice(&self.blockers);
+        fan_polys(&self.points, &self.polygons, &mut out);
         out
     }
 }
@@ -153,24 +167,6 @@ fn read_bsp(c: &mut Cursor<&[u8]>) -> Result<WorldBsp, AssetError> {
         points,
         polygons,
     })
-}
-
-fn skip_bsp(c: &mut Cursor<&[u8]>) -> Result<(), AssetError> {
-    let _id = crate::read_u32(c)?;
-    let point_count = crate::read_u32(c)? as usize;
-    let polygon_count = crate::read_u32(c)? as usize;
-    let _unk = crate::read_u32(c)?;
-    let node_count = crate::read_u32(c)? as usize;
-    c.seek(SeekFrom::Current(24))?;
-    let _zero = crate::read_u32(c)?;
-    let mut vert_counts = vec![0u8; polygon_count];
-    c.read_exact(&mut vert_counts)?;
-    for count in vert_counts {
-        let skip = 12i64 + 4 * i64::from(count);
-        c.seek(SeekFrom::Current(skip))?;
-    }
-    c.seek(SeekFrom::Current(node_count as i64 * 12 + point_count as i64 * 12))?;
-    Ok(())
 }
 
 fn fan_polys(points: &[Vec3], polygons: &[BspPoly], out: &mut Vec<[Vec3; 3]>) {
@@ -315,8 +311,72 @@ mod tests {
         bytes.extend_from_slice(&body);
         let models = WorldModels::parse(&bytes).unwrap();
         assert_eq!(models.physics().unwrap().names, ["PhysicsBSP"]);
+        assert_eq!(models.models.len(), 1);
         assert_eq!(models.blockers.len(), 1);
         assert_eq!(models.triangles().len(), 2);
+    }
+
+    #[test]
+    fn keeps_named_worldmodel_bsp() {
+        let mut bytes = vec![0u8; 56];
+        bytes[0..4].copy_from_slice(&FEAR_WORLD_VERSION.to_le_bytes());
+        bytes[4..8].copy_from_slice(&2000u32.to_le_bytes());
+
+        let mut body = Vec::new();
+        body.extend_from_slice(&[0u8; 24]);
+        body.extend_from_slice(&1u32.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.push(0);
+        let crate_name = b"Crate00\0";
+        let phys_name = b"PhysicsBSP\0";
+        let names_len = (phys_name.len() + crate_name.len()) as u32;
+        let counts = [2u32, names_len, 0, 2, 0, 1, 3, 3];
+        for c in counts {
+            body.extend_from_slice(&(c ^ FEAR_WORLD_MAGIC).to_le_bytes());
+        }
+        body.extend_from_slice(phys_name);
+        body.extend_from_slice(crate_name);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&(phys_name.len() as u32).to_le_bytes());
+        body.extend_from_slice(&1u32.to_le_bytes());
+        write_tri_bsp(&mut body);
+        write_tri_bsp(&mut body);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+
+        bytes.extend_from_slice(&body);
+        let models = WorldModels::parse(&bytes).unwrap();
+        assert_eq!(models.models.len(), 2);
+        assert!(models.physics().unwrap().is_physics());
+        let crate_bsp = models.mesh_named("Crate00").expect("named BSP dropped");
+        assert_eq!(crate_bsp.triangles().len(), 1);
+        assert_eq!(
+            models.triangles().len(),
+            1,
+            "clip must stay PhysicsBSP-only"
+        );
+    }
+
+    fn write_tri_bsp(body: &mut Vec<u8>) {
+        body.extend_from_slice(&1u32.to_le_bytes());
+        body.extend_from_slice(&3u32.to_le_bytes());
+        body.extend_from_slice(&1u32.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&[0u8; 24]);
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.push(3);
+        body.extend_from_slice(&[0u8; 2]);
+        body.extend_from_slice(&0u16.to_le_bytes());
+        body.extend_from_slice(&0u32.to_le_bytes());
+        body.extend_from_slice(&0f32.to_le_bytes());
+        for i in 0u32..3 {
+            body.extend_from_slice(&i.to_le_bytes());
+        }
+        write_vec3(body, Vec3::new(0.0, 0.0, 0.0));
+        write_vec3(body, Vec3::new(10.0, 0.0, 0.0));
+        write_vec3(body, Vec3::new(0.0, 0.0, 10.0));
     }
 
     fn write_vec3(buf: &mut Vec<u8>, v: Vec3) {

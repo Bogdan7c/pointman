@@ -76,6 +76,11 @@ impl Devices {
         if self.keys.contains(&KeyCode::KeyA) {
             input.move_axis.x -= 1.0;
         }
+        if self.keys.contains(&KeyCode::ArrowLeft) {
+            input.lean = -1.0;
+        } else if self.keys.contains(&KeyCode::ArrowRight) {
+            input.lean = 1.0;
+        }
         if input.move_axis.length_squared() > 1.0 {
             input.move_axis = input.move_axis.normalize();
         }

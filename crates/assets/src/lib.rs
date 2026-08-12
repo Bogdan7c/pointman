@@ -14,7 +14,7 @@ mod world_models;
 mod world_objects;
 
 pub use world_models::{WorldBsp, WorldModels};
-pub use world_objects::{GameStart, WorldLight, WorldObjects};
+pub use world_objects::{GameStart, WorldLight, WorldModelPlacement, WorldObjects};
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
 pub use dds::{DdsFormat, DdsImage};
@@ -29,6 +29,11 @@ pub use world00p::{
 
 pub fn archive_key(logical: &str) -> String {
     logical.replace('\\', "/")
+}
+
+/// Имя материала в архиве. В Intro опечатка Tile_MIrrow02, в паке лежит Mirror.
+pub fn material_key(logical: &str) -> String {
+    archive_key(&logical.replace("Tile_MIrrow02", "Tile_Mirror02"))
 }
 
 use std::fs::File;
@@ -98,4 +103,17 @@ pub(crate) fn read_exact_vec<R: Read + Seek>(r: &mut R, len: usize) -> Result<Ve
     let mut buf = vec![0u8; len];
     r.read_exact(&mut buf)?;
     Ok(buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::material_key;
+
+    #[test]
+    fn aliases_intro_mirror_typo() {
+        assert_eq!(
+            material_key(r"Materials\Tech\Research\Tile_MIrrow02.Mat00"),
+            "Materials/Tech/Research/Tile_Mirror02.Mat00"
+        );
+    }
 }

@@ -31,6 +31,7 @@ impl Input {
     pub fn clear_edges(&mut self) {
         self.look = Vec2::ZERO;
         self.jump = false;
+        self.crouch = false;
         self.reload = false;
         self.use_action = false;
         self.melee = false;

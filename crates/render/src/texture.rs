@@ -3,7 +3,7 @@ use ash::{vk, Device};
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator};
 use gpu_allocator::MemoryLocation;
 
-pub const MAX_TEXTURES: u32 = 1024;
+pub const MAX_TEXTURES: u32 = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TextureId(pub u32);

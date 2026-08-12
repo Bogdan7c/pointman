@@ -105,12 +105,13 @@ fn main() -> anyhow::Result<()> {
                 Ok(models) => {
                     if let Some(bsp) = models.physics() {
                         println!(
-                            "PhysicsBSP {}  points {}  polys {}  clip tris {}  blockers {}",
+                            "PhysicsBSP {}  points {}  polys {}  clip tris {}  blockers {}  bsp meshes {}",
                             bsp.names.join(","),
                             bsp.points.len(),
                             bsp.polygons.len(),
                             models.triangles().len(),
-                            models.blockers.len()
+                            models.blockers.len(),
+                            models.models.len()
                         );
                     } else {
                         println!("PhysicsBSP missing");
@@ -131,9 +132,10 @@ fn main() -> anyhow::Result<()> {
                         println!("GameStartPoint missing");
                     }
                     println!(
-                        "point/fill lights {}  ambient {:?}",
+                        "point/fill lights {}  ambient {:?}  worldmodels {}",
                         objects.lights.len(),
-                        objects.ambient
+                        objects.ambient,
+                        objects.models.len()
                     );
                 }
                 Err(err) => println!("world objects: {err}"),

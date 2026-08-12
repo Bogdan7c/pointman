@@ -6,6 +6,13 @@ use std::collections::{HashMap, HashSet};
 const CELL: f32 = 256.0;
 const ITERATIONS: u32 = 4;
 
+/// Результат шага капсулы: новый глаз и «стоим на полу».
+#[derive(Clone, Copy, Debug)]
+pub struct MoveResult {
+    pub eye: Vec3,
+    pub grounded: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct ClipMesh {
     triangles: Vec<[Vec3; 3]>,
@@ -29,6 +36,15 @@ impl ClipMesh {
         self.triangles.len()
     }
 
+    /// Потолок не даёт встать: после resolve глаз заметно ниже, чем просили.
+    pub fn eye_fits(&self, eye: Vec3, radius: f32, eye_height: f32) -> bool {
+        let mut probe = eye;
+        self.resolve(&mut probe, radius, eye_height);
+        (probe.y - eye.y).abs() < 4.0
+            && (probe.x - eye.x).abs() < 8.0
+            && (probe.z - eye.z).abs() < 8.0
+    }
+
     pub fn move_eye(
         &self,
         mut eye: Vec3,
@@ -38,21 +54,25 @@ impl ClipMesh {
         dt: f32,
         gravity: f32,
         vertical_speed: &mut f32,
-    ) -> Vec3 {
+    ) -> MoveResult {
         *vertical_speed -= gravity * dt;
         let mut vel = wish;
         vel.y += *vertical_speed;
+        let mut grounded = false;
         let step_dt = dt / ITERATIONS as f32;
         for _ in 0..ITERATIONS {
             let stepped = eye + vel * step_dt;
             eye = stepped;
             self.resolve(&mut eye, radius, eye_height);
+            // Пол поймал падение: глаз не провалился вместе со stepped.
+            // Прыжок (vel.y > 0) сюда не попадает — иначе hop сразу гасится.
             if vel.y < 0.0 && eye.y > stepped.y + 0.05 {
                 *vertical_speed = 0.0;
                 vel.y = 0.0;
+                grounded = true;
             }
         }
-        eye
+        MoveResult { eye, grounded }
     }
 
     fn resolve(&self, eye: &mut Vec3, radius: f32, eye_height: f32) {
@@ -191,15 +211,17 @@ mod tests {
         let mut eye = Vec3::new(0.0, 160.0, 0.0);
         let mut vy = 0.0;
         for _ in 0..40 {
-            eye = mesh.move_eye(
-                eye,
-                Vec3::new(400.0, 0.0, 0.0),
-                radius,
-                eye_h,
-                0.05,
-                0.0,
-                &mut vy,
-            );
+            eye = mesh
+                .move_eye(
+                    eye,
+                    Vec3::new(400.0, 0.0, 0.0),
+                    radius,
+                    eye_h,
+                    0.05,
+                    0.0,
+                    &mut vy,
+                )
+                .eye;
         }
         assert!(
             eye.x < 80.0 - radius + 4.0,
@@ -214,12 +236,52 @@ mod tests {
         let mesh = wall_and_floor();
         let mut eye = Vec3::new(0.0, 400.0, 0.0);
         let mut vy = 0.0;
+        let mut grounded = false;
         for _ in 0..45 {
-            eye = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 980.0, &mut vy);
+            let step = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 2000.0, &mut vy);
+            eye = step.eye;
+            grounded = step.grounded;
         }
         assert!(
             (eye.y - 160.0).abs() < 24.0,
             "expected eye near 160 after landing, got {}",
+            eye.y
+        );
+        assert!(grounded, "landing must report grounded");
+    }
+
+    #[test]
+    fn jump_leaves_floor_and_lands() {
+        let mesh = wall_and_floor();
+        let mut eye = Vec3::new(0.0, 160.0, 0.0);
+        let mut vy = 0.0;
+        for _ in 0..10 {
+            let step = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 2000.0, &mut vy);
+            eye = step.eye;
+        }
+        let start_y = eye.y;
+        vy = 445.5;
+        let step = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 2000.0, &mut vy);
+        eye = step.eye;
+        assert!(
+            eye.y > start_y + 4.0,
+            "jump must lift the eye, start {start_y} now {}",
+            eye.y
+        );
+        assert!(vy > 0.0, "jump must keep upward speed on the first frame");
+        let mut landed = false;
+        for _ in 0..60 {
+            let step = mesh.move_eye(eye, Vec3::ZERO, 40.0, 160.0, 1.0 / 30.0, 2000.0, &mut vy);
+            eye = step.eye;
+            if step.grounded {
+                landed = true;
+                break;
+            }
+        }
+        assert!(landed, "jump must land back on the floor");
+        assert!(
+            (eye.y - 160.0).abs() < 24.0,
+            "landed eye should be ~160, got {}",
             eye.y
         );
     }
