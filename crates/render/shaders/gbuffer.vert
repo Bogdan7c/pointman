@@ -9,6 +9,7 @@ layout(set = 0, binding = 0) uniform Frame {
     mat4 view_proj;
     mat4 inv_view_proj;
     vec4 camera_pos;
+    vec4 ambient;
     vec4 pos_radius[8];
     vec4 color_intensity[8];
     uint light_count;

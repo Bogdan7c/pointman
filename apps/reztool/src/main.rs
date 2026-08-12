@@ -1,6 +1,8 @@
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
-use pointman_assets::{kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldModels, WorldRender};
+use pointman_assets::{
+    kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldModels, WorldObjects, WorldRender,
+};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -115,6 +117,26 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 Err(err) => println!("world models: {err}"),
+            }
+            match WorldObjects::parse(&bytes) {
+                Ok(objects) => {
+                    if let Some(start) = objects.spawn() {
+                        println!(
+                            "GameStartPoint {}  {:?}  yaw {:.1}°",
+                            start.name,
+                            start.pos,
+                            start.yaw.to_degrees()
+                        );
+                    } else {
+                        println!("GameStartPoint missing");
+                    }
+                    println!(
+                        "point/fill lights {}  ambient {:?}",
+                        objects.lights.len(),
+                        objects.ambient
+                    );
+                }
+                Err(err) => println!("world objects: {err}"),
             }
         }
         Cmd::Extract {

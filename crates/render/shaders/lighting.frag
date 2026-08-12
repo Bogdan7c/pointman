@@ -6,6 +6,7 @@ layout(set = 0, binding = 0) uniform Frame {
     mat4 view_proj;
     mat4 inv_view_proj;
     vec4 camera_pos;
+    vec4 ambient;
     vec4 pos_radius[8];
     vec4 color_intensity[8];
     uint light_count;
@@ -23,7 +24,7 @@ void main() {
     vec4 albedo = texture(u_albedo, v_uv);
     float depth = texture(u_depth, v_uv).r;
     if (depth >= 0.9999) {
-        out_color = vec4(0.008, 0.008, 0.01, 1.0);
+        out_color = vec4(frame.ambient.rgb * 0.35, 1.0);
         return;
     }
 
@@ -35,7 +36,7 @@ void main() {
     vec3 pos = world.xyz / world.w;
     vec3 view = normalize(frame.camera_pos.xyz - pos);
 
-    vec3 lit = albedo.rgb * 0.025;
+    vec3 lit = albedo.rgb * max(frame.ambient.rgb, vec3(0.08));
     uint count = min(frame.light_count, 8u);
     for (uint i = 0u; i < count; i++) {
         vec3 lpos = frame.pos_radius[i].xyz;

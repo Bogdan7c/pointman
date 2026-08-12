@@ -2,9 +2,11 @@ mod gamepad;
 
 use anyhow::Context;
 use gamepad::Devices;
-use glam::{Vec2, Vec3};
-use pointman_assets::{archive_key, DdsFormat, DdsImage, Material, WorldModels, WorldRender};
-use pointman_engine::{LevelDraw, Simulation};
+use glam::Vec2;
+use pointman_assets::{
+    archive_key, DdsFormat, DdsImage, Material, WorldModels, WorldObjects, WorldRender,
+};
+use pointman_engine::{LevelDraw, LevelLight, Simulation};
 use pointman_game::{AssetIndex, Config, GameMount, INTRO_WORLD};
 use pointman_render::{Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
 use std::collections::HashMap;
@@ -233,7 +235,20 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         textured,
                         fallback
                     );
-                    let spawn = verts.first().map(|v| Vec3::from_array(v.position));
+                    let objects = WorldObjects::parse(&bytes).unwrap_or_else(|err| {
+                        log::error!("world objects: {err}");
+                        WorldObjects::default()
+                    });
+                    if let Some(start) = objects.spawn() {
+                        log::info!(
+                            "GameStartPoint {}  {:?}  yaw {:.1}°  lights {}  ambient {:?}",
+                            start.name,
+                            start.pos,
+                            start.yaw.to_degrees(),
+                            objects.lights.len(),
+                            objects.ambient
+                        );
+                    }
                     let triangles = WorldModels::parse(&bytes)
                         .map(|m| {
                             if let Some(bsp) = m.physics() {
@@ -255,8 +270,19 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         level_draws,
                         world.header.min,
                         world.header.max,
-                        spawn,
+                        objects.spawn().map(|s| s.pos),
+                        objects.spawn().map(|s| s.yaw),
                         triangles,
+                        objects
+                            .lights
+                            .iter()
+                            .map(|light| LevelLight {
+                                position: light.position,
+                                radius: light.radius,
+                                color: light.color,
+                            })
+                            .collect(),
+                        objects.ambient,
                     );
                 }
                 Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),

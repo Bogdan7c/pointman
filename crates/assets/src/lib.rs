@@ -11,8 +11,10 @@ mod mat00;
 mod rez;
 mod world00p;
 mod world_models;
+mod world_objects;
 
 pub use world_models::{WorldBsp, WorldModels};
+pub use world_objects::{GameStart, WorldLight, WorldObjects};
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
 pub use dds::{DdsFormat, DdsImage};

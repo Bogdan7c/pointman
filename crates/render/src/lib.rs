@@ -64,4 +64,5 @@ pub struct DrawList {
     pub camera: Camera,
     pub instances: Vec<MeshInstance>,
     pub lights: Vec<PointLight>,
+    pub ambient: Vec3,
 }

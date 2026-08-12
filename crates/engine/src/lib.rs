@@ -21,10 +21,18 @@ pub struct LevelDraw {
     pub spec_power: f32,
 }
 
+pub struct LevelLight {
+    pub position: Vec3,
+    pub radius: f32,
+    pub color: Vec3,
+}
+
 struct LoadedLevel {
     mesh: MeshId,
     draws: Vec<LevelDraw>,
     clip: Option<ClipMesh>,
+    lights: Vec<LevelLight>,
+    ambient: Vec3,
 }
 
 pub struct Replica {
@@ -91,7 +99,10 @@ impl Simulation {
         min: Vec3,
         max: Vec3,
         spawn: Option<Vec3>,
+        yaw: Option<f32>,
         triangles: Vec<[Vec3; 3]>,
+        lights: Vec<LevelLight>,
+        ambient: Vec3,
     ) {
         self.vertical_speed = 0.0;
         self.unit = 100.0;
@@ -105,21 +116,29 @@ impl Simulation {
             mesh,
             draws,
             clip,
+            lights,
+            ambient,
         });
         let center = (min + max) * 0.5;
         let extent = max - min;
         let spawn = spawn.unwrap_or(Vec3::new(center.x, min.y, center.z));
-        self.floor_y = spawn.y;
-        self.camera.position = Vec3::new(spawn.x, spawn.y + 1.6 * self.unit, spawn.z);
+        // GameStartPoint Pos — центр капсулы (~90 см над полом), глаза выше на 70 см.
+        self.floor_y = spawn.y - 0.9 * self.unit;
+        self.camera.position = Vec3::new(spawn.x, spawn.y + 0.7 * self.unit, spawn.z);
+        if let Some(yaw) = yaw {
+            self.camera.yaw = yaw;
+            self.camera.pitch = 0.0;
+        }
         self.camera.z_near = 4.0;
         self.camera.z_far = 12000.0;
         self.replica.position = self.camera.position + Vec3::new(2.0, 0.0, 4.0) * self.unit;
         log::info!(
-            "level camera {:?}  extent {:?}  z_far {:.0}  surfaces {}",
+            "level camera {:?} yaw {:.1}°  lights {}  ambient {:?}  extent {:?}",
             self.camera.position,
-            extent,
-            self.camera.z_far,
-            self.level.as_ref().map(|l| l.draws.len()).unwrap_or(0)
+            self.camera.yaw.to_degrees(),
+            self.level.as_ref().map(|l| l.lights.len()).unwrap_or(0),
+            ambient,
+            extent
         );
     }
 
@@ -250,51 +269,111 @@ impl Simulation {
                     Vec4::from_array(color),
                 )
             }));
+            let color = match self.replica.plan.as_ref().map(|p| p.goal) {
+                Some("KillEnemy") => Vec4::new(0.85, 0.12, 0.10, 1.0),
+                Some("InvestigateDisturbance") => Vec4::new(0.85, 0.7, 0.15, 1.0),
+                _ => Vec4::new(0.25, 0.4, 0.75, 1.0),
+            };
+            instances.push(MeshInstance::new(
+                MeshId::CUBE,
+                Mat4::from_translation(self.replica.position)
+                    * Mat4::from_scale(Vec3::new(0.6, 1.8, 0.6) * self.unit),
+                color,
+            ));
         }
 
-        let color = match self.replica.plan.as_ref().map(|p| p.goal) {
-            Some("KillEnemy") => Vec4::new(0.85, 0.12, 0.10, 1.0),
-            Some("InvestigateDisturbance") => Vec4::new(0.85, 0.7, 0.15, 1.0),
-            _ => Vec4::new(0.25, 0.4, 0.75, 1.0),
-        };
-        instances.push(MeshInstance::new(
-            MeshId::CUBE,
-            Mat4::from_translation(self.replica.position)
-                * Mat4::from_scale(Vec3::new(0.6, 1.8, 0.6) * self.unit),
-            color,
-        ));
-
         let flashlight = self.camera.position + self.camera.forward() * 0.4 * self.unit;
-        let flash_i = if self.flashlight { 18.0 } else { 0.0 };
+        let flash_i = if self.flashlight { 12.0 } else { 0.0 };
+        let mut lights = Vec::new();
+        if self.flashlight {
+            lights.push(PointLight {
+                position: flashlight,
+                radius: 14.0 * self.unit,
+                color: Vec3::new(1.0, 0.95, 0.85),
+                intensity: flash_i,
+            });
+        }
+        let ambient;
+        if let Some(level) = &self.level {
+            ambient = level.ambient.max(Vec3::splat(0.08));
+            let slots = 8usize.saturating_sub(lights.len());
+            lights.extend(nearest_lights(&level.lights, self.camera.position, slots));
+        } else {
+            ambient = Vec3::splat(0.12);
+            lights.push(PointLight {
+                position: self.camera.position + Vec3::Y * 0.8 * self.unit,
+                radius: 8.0 * self.unit,
+                color: Vec3::new(1.0, 0.55, 0.25),
+                intensity: 4.0 + (self.time * 6.0).sin().abs() * 2.0,
+            });
+            lights.push(PointLight {
+                position: self.replica.position + Vec3::Y * 0.6 * self.unit,
+                radius: 5.0 * self.unit,
+                intensity: 2.5,
+                color: Vec3::new(0.4, 0.7, 1.0),
+            });
+        }
         DrawList {
             camera: self.camera.clone(),
             instances,
-            lights: vec![
-                PointLight {
-                    position: flashlight,
-                    radius: 14.0 * self.unit,
-                    color: Vec3::new(1.0, 0.95, 0.85),
-                    intensity: flash_i,
-                },
-                PointLight {
-                    position: self.camera.position + Vec3::Y * 0.8 * self.unit,
-                    radius: 8.0 * self.unit,
-                    color: Vec3::new(1.0, 0.55, 0.25),
-                    intensity: 4.0 + (self.time * 6.0).sin().abs() * 2.0,
-                },
-                PointLight {
-                    position: self.replica.position + Vec3::Y * 0.6 * self.unit,
-                    radius: 5.0 * self.unit,
-                    intensity: 2.5,
-                    color: Vec3::new(0.4, 0.7, 1.0),
-                },
-            ],
+            lights,
+            ambient,
         }
     }
+}
+
+fn nearest_lights(lights: &[LevelLight], pos: Vec3, n: usize) -> Vec<PointLight> {
+    let mut order: Vec<usize> = (0..lights.len()).collect();
+    order.sort_by(|&a, &b| {
+        lights[a]
+            .position
+            .distance_squared(pos)
+            .total_cmp(&lights[b].position.distance_squared(pos))
+    });
+    order
+        .into_iter()
+        .take(n)
+        .map(|i| PointLight {
+            position: lights[i].position,
+            radius: lights[i].radius,
+            color: lights[i].color,
+            intensity: 1.0,
+        })
+        .collect()
 }
 
 impl Default for Simulation {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nearest_lights_picks_closest() {
+        let lights = vec![
+            LevelLight {
+                position: Vec3::new(1000.0, 0.0, 0.0),
+                radius: 100.0,
+                color: Vec3::ONE,
+            },
+            LevelLight {
+                position: Vec3::new(10.0, 0.0, 0.0),
+                radius: 100.0,
+                color: Vec3::X,
+            },
+            LevelLight {
+                position: Vec3::new(50.0, 0.0, 0.0),
+                radius: 100.0,
+                color: Vec3::Y,
+            },
+        ];
+        let picked = nearest_lights(&lights, Vec3::ZERO, 2);
+        assert_eq!(picked.len(), 2);
+        assert_eq!(picked[0].color, Vec3::X);
+        assert_eq!(picked[1].color, Vec3::Y);
     }
 }
