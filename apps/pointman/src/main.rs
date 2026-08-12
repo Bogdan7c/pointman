@@ -188,6 +188,8 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                     pos: v.position,
                     normal: v.normal,
                     uv: v.uv,
+                    tangent: v.tangent,
+                    binormal: v.binormal,
                 })
                 .collect();
             match renderer.upload_mesh(&gpu, &indices) {
@@ -199,14 +201,14 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                     let mut fallback = 0u32;
                     let mut level_draws = Vec::with_capacity(draws.len());
                     for draw in draws {
-                        let tex = texture_for(
+                        let maps = maps_for(
                             &mut index,
                             renderer,
                             &mut mat_cache,
                             &mut dds_cache,
                             &draw.material,
                         );
-                        if tex == TextureId::WHITE {
+                        if maps.albedo == TextureId::WHITE {
                             fallback += 1;
                         } else {
                             textured += 1;
@@ -214,12 +216,15 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         level_draws.push(LevelDraw {
                             first_index: draw.first_index,
                             index_count: draw.index_count,
-                            color: if tex == TextureId::WHITE {
+                            color: if maps.albedo == TextureId::WHITE {
                                 draw.color
                             } else {
                                 [1.0, 1.0, 1.0, 1.0]
                             },
-                            texture: tex,
+                            albedo: maps.albedo,
+                            normal: maps.normal,
+                            spec: maps.spec,
+                            spec_power: maps.spec_power,
                         });
                     }
                     log::info!(
@@ -263,33 +268,96 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
     }
 }
 
-fn texture_for(
+fn maps_for(
     index: &mut AssetIndex,
     renderer: &mut Renderer,
-    mat_cache: &mut HashMap<String, TextureId>,
+    mat_cache: &mut HashMap<String, MaterialMaps>,
     dds_cache: &mut HashMap<String, TextureId>,
     material: &str,
-) -> TextureId {
-    if let Some(id) = mat_cache.get(material) {
-        return *id;
+) -> MaterialMaps {
+    if let Some(maps) = mat_cache.get(material) {
+        return *maps;
     }
-    let id = load_diffuse(index, renderer, dds_cache, material).unwrap_or(TextureId::WHITE);
-    mat_cache.insert(material.to_string(), id);
-    id
+    let maps = load_maps(index, renderer, dds_cache, material).unwrap_or(MaterialMaps::fallback());
+    mat_cache.insert(material.to_string(), maps);
+    maps
 }
 
-fn load_diffuse(
+#[derive(Clone, Copy)]
+struct MaterialMaps {
+    albedo: TextureId,
+    normal: TextureId,
+    spec: TextureId,
+    spec_power: f32,
+}
+
+impl MaterialMaps {
+    fn fallback() -> Self {
+        Self {
+            albedo: TextureId::WHITE,
+            normal: TextureId::FLAT_NORMAL,
+            spec: TextureId::BLACK_SPEC,
+            spec_power: 64.0,
+        }
+    }
+}
+
+fn load_maps(
     index: &mut AssetIndex,
     renderer: &mut Renderer,
     dds_cache: &mut HashMap<String, TextureId>,
     material: &str,
-) -> anyhow::Result<TextureId> {
+) -> anyhow::Result<MaterialMaps> {
     let mat = Material::parse(&index.read(&archive_key(material))?)?;
-    let diffuse = mat
-        .diffuse_map()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("no tDiffuseMap in {material}"))?;
-    let mut key = archive_key(diffuse);
+    let albedo = load_slot(
+        index,
+        renderer,
+        dds_cache,
+        mat.diffuse_map(),
+        TextureId::WHITE,
+    );
+    let normal = load_slot(
+        index,
+        renderer,
+        dds_cache,
+        mat.normal_map(),
+        TextureId::FLAT_NORMAL,
+    );
+    let spec = load_slot(
+        index,
+        renderer,
+        dds_cache,
+        mat.specular_map(),
+        TextureId::BLACK_SPEC,
+    );
+    Ok(MaterialMaps {
+        albedo,
+        normal,
+        spec,
+        spec_power: mat.max_specular_power(),
+    })
+}
+
+fn load_slot(
+    index: &mut AssetIndex,
+    renderer: &mut Renderer,
+    dds_cache: &mut HashMap<String, TextureId>,
+    slot: Option<&str>,
+    fallback: TextureId,
+) -> TextureId {
+    let Some(path) = slot.filter(|s| !s.is_empty()) else {
+        return fallback;
+    };
+    upload_dds(index, renderer, dds_cache, path).unwrap_or(fallback)
+}
+
+fn upload_dds(
+    index: &mut AssetIndex,
+    renderer: &mut Renderer,
+    dds_cache: &mut HashMap<String, TextureId>,
+    path: &str,
+) -> anyhow::Result<TextureId> {
+    let mut key = archive_key(path);
     if !key.to_ascii_lowercase().ends_with(".dds") {
         key.push_str(".dds");
     }
@@ -301,6 +369,7 @@ fn load_diffuse(
         DdsFormat::Bc1 => TextureFormat::Bc1,
         DdsFormat::Bc2 => TextureFormat::Bc2,
         DdsFormat::Bc3 => TextureFormat::Bc3,
+        DdsFormat::Bgra8 => TextureFormat::Bgra8,
     };
     let id = renderer.upload_texture(TextureUpload {
         width: dds.width,

@@ -25,10 +25,10 @@
 - [x] CI, `main`, remote
 - [x] Индекс World00p/Model00p/DDS по архивам без полной распаковки
 
-### 1. Мир на экране — в работе
+### 1. Мир на экране — готово
 - [x] Render surfaces из `World00p` (vertex blocks, materials)
 - [x] DDS → Vulkan, `Mat00` diffuse (BC1/BC2/BC3, UV, REPEAT)
-- [ ] `Mat00` spec/normal — следующий пункт
+- [x] `Mat00` spec/normal (BGRA8 + DXT, TBN, Blinn-Phong)
 - [x] Камера/коллизия по BSP, не сквозь стены (PhysicsBSP + world-space blockers; капсула 40 см как FEAR AABB; двери-worldmodel ещё нет)
 - [x] Загрузка Intro / первой карты кампании (`Worlds/Release/Intro.World00p`)
 
@@ -69,4 +69,4 @@
 - [ ] Рендер: clustered/deferred, тени, MSAA/TAA — **без ломки оригинального lighting model**
 - [ ] Ребинды, Steam Input как опция, дефолт — 360
 
-Порядок работы: не перескакивать фазы. Следующий пункт — **Mat00 spec/normal**, потом фаза 2 (игрок 1:1).
+Порядок работы: не перескакивать фазы. Следующий пункт — **фаза 2 (игрок 1:1)**.

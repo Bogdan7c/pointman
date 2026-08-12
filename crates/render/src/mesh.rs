@@ -7,6 +7,19 @@ pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub tangent: [f32; 3],
+    pub binormal: [f32; 3],
+}
+
+pub fn tbn_from_normal(normal: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+    let n = Vec3::from_array(normal);
+    let tangent = if n.y.abs() > 0.99 {
+        Vec3::X
+    } else {
+        Vec3::Y.cross(n).normalize_or_zero()
+    };
+    let binormal = n.cross(tangent).normalize_or_zero();
+    (tangent.to_array(), binormal.to_array())
 }
 
 pub fn cube() -> (Vec<Vertex>, Vec<u16>) {
@@ -22,11 +35,14 @@ pub fn cube() -> (Vec<Vertex>, Vec<u16>) {
     let mut indices = Vec::new();
     for (n, corners) in faces {
         let base = vertices.len() as u16;
+        let (tangent, binormal) = tbn_from_normal(n);
         for c in corners {
             vertices.push(Vertex {
                 pos: [c[0] as f32 * 0.5, c[1] as f32 * 0.5, c[2] as f32 * 0.5],
                 normal: n,
                 uv: [0.0, 0.0],
+                tangent,
+                binormal,
             });
         }
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);

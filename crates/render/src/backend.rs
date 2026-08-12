@@ -1,3 +1,4 @@
+use crate::material::{self, MAX_MATERIALS};
 use crate::mesh::Vertex;
 use crate::texture::{self, GpuTexture, TextureId, TextureUpload, MAX_TEXTURES};
 use crate::{DrawList, MeshId, RenderError};
@@ -7,6 +8,7 @@ use bytemuck::{Pod, Zeroable};
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator, AllocatorCreateDesc};
 use gpu_allocator::MemoryLocation;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::mem::size_of;
 use winit::window::Window;
@@ -30,6 +32,8 @@ struct FrameUbo {
 struct Push {
     model: [[f32; 4]; 4],
     color: [f32; 4],
+    spec_power: f32,
+    _pad: [f32; 3],
 }
 
 struct GpuBuffer {
@@ -78,6 +82,7 @@ pub struct Renderer {
     lighting_pass: vk::RenderPass,
     albedo: Option<GpuImage>,
     normal: Option<GpuImage>,
+    spec: Option<GpuImage>,
     depth: Option<GpuImage>,
     gbuffer_fb: vk::Framebuffer,
     light_fbs: Vec<vk::Framebuffer>,
@@ -96,6 +101,7 @@ pub struct Renderer {
     frame_index: usize,
     meshes: Vec<GpuMesh>,
     textures: Vec<GpuTexture>,
+    materials: HashMap<(u32, u32, u32), vk::DescriptorSet>,
 }
 
 impl Renderer {
@@ -176,9 +182,9 @@ impl Renderer {
         let lighting_pass = create_lighting_pass(&device, swap_format)?;
         let sampler = create_sampler(&device)?;
         let (ubo_layout, sampled_layout) = create_set_layouts(&device)?;
-        let material_layout = texture::create_material_layout(&device)?;
+        let material_layout = material::create_material_layout(&device)?;
         let push_range = vk::PushConstantRange::default()
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .offset(0)
             .size(size_of::<Push>() as u32);
         let gbuffer_set_layouts = [ubo_layout, material_layout];
@@ -230,13 +236,13 @@ impl Renderer {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 3 + MAX_TEXTURES,
+                descriptor_count: 4 + MAX_MATERIALS * 3,
             },
         ];
         let descriptor_pool = unsafe {
             device.create_descriptor_pool(
                 &vk::DescriptorPoolCreateInfo::default()
-                    .max_sets((FRAMES as u32) + 1 + MAX_TEXTURES)
+                    .max_sets((FRAMES as u32) + 1 + MAX_MATERIALS)
                     .pool_sizes(&pool_sizes),
                 None,
             )?
@@ -356,6 +362,7 @@ impl Renderer {
             lighting_pass,
             albedo: None,
             normal: None,
+            spec: None,
             depth: None,
             gbuffer_fb: vk::Framebuffer::null(),
             light_fbs: Vec::new(),
@@ -378,21 +385,11 @@ impl Renderer {
                 index_count: inds.len() as u32,
             }],
             textures: Vec::new(),
+            materials: HashMap::new(),
         };
-        let white = texture::upload_texture(
-            &renderer.device,
-            renderer.queue,
-            renderer.cmd_pool,
-            renderer
-                .allocator
-                .as_mut()
-                .ok_or_else(|| RenderError::Alloc("allocator gone".into()))?,
-            renderer.descriptor_pool,
-            renderer.material_layout,
-            renderer.sampler,
-            texture::white_upload(),
-        )?;
-        renderer.textures.push(white);
+        Self::push_fallback(&mut renderer, texture::white_upload())?;
+        Self::push_fallback(&mut renderer, texture::flat_normal_upload())?;
+        Self::push_fallback(&mut renderer, texture::black_spec_upload())?;
         renderer.recreate_gbuffer()?;
         Ok(renderer)
     }
@@ -402,6 +399,10 @@ impl Renderer {
             return Ok(());
         }
         self.recreate_swapchain(vk::Extent2D { width, height })
+    }
+
+    fn push_fallback(renderer: &mut Self, data: TextureUpload<'_>) -> Result<TextureId, RenderError> {
+        renderer.upload_texture(data)
     }
 
     pub fn upload_mesh(
@@ -453,14 +454,70 @@ impl Renderer {
             self.queue,
             self.cmd_pool,
             allocator,
-            self.descriptor_pool,
-            self.material_layout,
-            self.sampler,
             data,
         )?;
         let id = TextureId(self.textures.len() as u32);
         self.textures.push(gpu);
         Ok(id)
+    }
+
+    fn ensure_materials(&mut self, list: &DrawList) -> Result<(), RenderError> {
+        self.bind_material(
+            TextureId::WHITE,
+            TextureId::FLAT_NORMAL,
+            TextureId::BLACK_SPEC,
+        )?;
+        for inst in &list.instances {
+            self.bind_material(inst.albedo, inst.normal, inst.spec)?;
+        }
+        Ok(())
+    }
+
+    fn bind_material(
+        &mut self,
+        albedo: TextureId,
+        normal: TextureId,
+        spec: TextureId,
+    ) -> Result<(), RenderError> {
+        let key = (albedo.0, normal.0, spec.0);
+        if self.materials.contains_key(&key) {
+            return Ok(());
+        }
+        if self.materials.len() as u32 >= MAX_MATERIALS {
+            return Err(RenderError::Alloc("material limit".into()));
+        }
+        let albedo_view = self.texture_view(albedo)?;
+        let normal_view = self.texture_view(normal)?;
+        let spec_view = self.texture_view(spec)?;
+        let set = material::write_material_set(
+            &self.device,
+            self.descriptor_pool,
+            self.material_layout,
+            self.sampler,
+            albedo_view,
+            normal_view,
+            spec_view,
+        )?;
+        self.materials.insert(key, set);
+        Ok(())
+    }
+
+    fn texture_view(&self, id: TextureId) -> Result<vk::ImageView, RenderError> {
+        self.textures
+            .get(id.0 as usize)
+            .map(|tex| tex.view)
+            .ok_or_else(|| RenderError::Alloc(format!("texture {}", id.0)))
+    }
+
+    fn default_material_set(&self) -> vk::DescriptorSet {
+        *self
+            .materials
+            .get(&(
+                TextureId::WHITE.0,
+                TextureId::FLAT_NORMAL.0,
+                TextureId::BLACK_SPEC.0,
+            ))
+            .expect("fallback material set")
     }
 
     pub fn draw(&mut self, list: &DrawList) -> Result<(), RenderError> {
@@ -495,6 +552,7 @@ impl Renderer {
         };
 
         unsafe { self.device.reset_fences(&[fence])? };
+        self.ensure_materials(list)?;
         self.update_ubo(frame_i, list)?;
         self.record(frame_i, image_index as usize, list)?;
 
@@ -599,6 +657,11 @@ impl Renderer {
                 },
             },
             vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
+            },
+            vk::ClearValue {
                 depth_stencil: vk::ClearDepthStencilValue {
                     depth: 1.0,
                     stencil: 0,
@@ -623,7 +686,7 @@ impl Renderer {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.gbuffer_pipe_layout,
                 0,
-                &[self.frames[frame_i].ubo_set, self.textures[0].set],
+                &[self.frames[frame_i].ubo_set, self.default_material_set()],
                 &[],
             );
             self.device
@@ -636,7 +699,7 @@ impl Renderer {
             );
         }
         let mut bound = 0u32;
-        let mut bound_tex = TextureId::WHITE;
+        let mut bound_mat = (u32::MAX, u32::MAX, u32::MAX);
         for inst in &list.instances {
             let mesh_id = inst.mesh.0 as usize;
             if mesh_id >= self.meshes.len() {
@@ -659,18 +722,20 @@ impl Renderer {
                     );
                 }
             }
-            let tex = inst.texture.0 as usize;
-            if tex < self.textures.len() && inst.texture != bound_tex {
-                bound_tex = inst.texture;
-                unsafe {
-                    self.device.cmd_bind_descriptor_sets(
-                        cmd,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.gbuffer_pipe_layout,
-                        1,
-                        &[self.textures[tex].set],
-                        &[],
-                    );
+            let key = (inst.albedo.0, inst.normal.0, inst.spec.0);
+            if key != bound_mat {
+                if let Some(&set) = self.materials.get(&key) {
+                    bound_mat = key;
+                    unsafe {
+                        self.device.cmd_bind_descriptor_sets(
+                            cmd,
+                            vk::PipelineBindPoint::GRAPHICS,
+                            self.gbuffer_pipe_layout,
+                            1,
+                            &[set],
+                            &[],
+                        );
+                    }
                 }
             }
             let index_count = if inst.index_count == 0 {
@@ -681,12 +746,14 @@ impl Renderer {
             let push = Push {
                 model: inst.transform.to_cols_array_2d(),
                 color: inst.color.to_array(),
+                spec_power: inst.spec_power,
+                _pad: [0.0; 3],
             };
             unsafe {
                 self.device.cmd_push_constants(
                     cmd,
                     self.gbuffer_pipe_layout,
-                    vk::ShaderStageFlags::VERTEX,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                     0,
                     bytemuck::bytes_of(&push),
                 );
@@ -768,8 +835,15 @@ impl Renderer {
             vk::Format::R8G8B8A8_UNORM,
             "normal",
         )?;
+        let spec = create_color_target(
+            &self.device,
+            allocator,
+            self.extent,
+            vk::Format::R8G8B8A8_UNORM,
+            "spec",
+        )?;
         let depth = create_depth_target(&self.device, allocator, self.extent)?;
-        let attachments = [albedo.view, normal.view, depth.view];
+        let attachments = [albedo.view, normal.view, spec.view, depth.view];
         self.gbuffer_fb = unsafe {
             self.device.create_framebuffer(
                 &vk::FramebufferCreateInfo::default()
@@ -807,6 +881,10 @@ impl Renderer {
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
             vk::DescriptorImageInfo::default()
                 .sampler(self.sampler)
+                .image_view(spec.view)
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
+            vk::DescriptorImageInfo::default()
+                .sampler(self.sampler)
                 .image_view(depth.view)
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
         ];
@@ -826,10 +904,16 @@ impl Renderer {
                 .dst_binding(2)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .image_info(std::slice::from_ref(&infos[2])),
+            vk::WriteDescriptorSet::default()
+                .dst_set(self.sampled_set)
+                .dst_binding(3)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(std::slice::from_ref(&infos[3])),
         ];
         unsafe { self.device.update_descriptor_sets(&writes, &[]) };
         self.albedo = Some(albedo);
         self.normal = Some(normal);
+        self.spec = Some(spec);
         self.depth = Some(depth);
         Ok(())
     }
@@ -845,7 +929,7 @@ impl Renderer {
             }
         }
         let allocator = self.allocator.as_mut().unwrap();
-        for slot in [&mut self.albedo, &mut self.normal, &mut self.depth] {
+        for slot in [&mut self.albedo, &mut self.normal, &mut self.spec, &mut self.depth] {
             if let Some(img) = slot.take() {
                 unsafe { self.device.destroy_image_view(img.view, None) };
                 unsafe { self.device.destroy_image(img.image, None) };
@@ -1062,7 +1146,7 @@ fn create_gbuffer_pass(device: &Device) -> Result<vk::RenderPass, RenderError> {
         .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
         .initial_layout(vk::ImageLayout::UNDEFINED)
         .final_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-    let attachments = [color, color, depth];
+    let attachments = [color, color, color, depth];
     let color_refs = [
         vk::AttachmentReference {
             attachment: 0,
@@ -1072,9 +1156,13 @@ fn create_gbuffer_pass(device: &Device) -> Result<vk::RenderPass, RenderError> {
             attachment: 1,
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         },
+        vk::AttachmentReference {
+            attachment: 2,
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        },
     ];
     let depth_ref = vk::AttachmentReference {
-        attachment: 2,
+        attachment: 3,
         layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
     };
     let subpass = vk::SubpassDescription::default()
@@ -1203,6 +1291,11 @@ fn create_set_layouts(
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(3)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT),
     ];
     let sampled_layout = unsafe {
         device.create_descriptor_set_layout(
@@ -1269,6 +1362,18 @@ fn create_gbuffer_pipeline(
             format: vk::Format::R32G32_SFLOAT,
             offset: 24,
         },
+        vk::VertexInputAttributeDescription {
+            location: 3,
+            binding: 0,
+            format: vk::Format::R32G32B32_SFLOAT,
+            offset: 32,
+        },
+        vk::VertexInputAttributeDescription {
+            location: 4,
+            binding: 0,
+            format: vk::Format::R32G32B32_SFLOAT,
+            offset: 44,
+        },
     ];
     let vertex = vk::PipelineVertexInputStateCreateInfo::default()
         .vertex_binding_descriptions(std::slice::from_ref(&binding))
@@ -1291,7 +1396,7 @@ fn create_gbuffer_pipeline(
         .depth_compare_op(vk::CompareOp::LESS);
     let blend_att = vk::PipelineColorBlendAttachmentState::default()
         .color_write_mask(vk::ColorComponentFlags::RGBA);
-    let blends = [blend_att, blend_att];
+    let blends = [blend_att, blend_att, blend_att];
     let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
     let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
     let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);

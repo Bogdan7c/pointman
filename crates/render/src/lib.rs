@@ -1,13 +1,16 @@
 mod backend;
+mod blinn;
 mod camera;
 mod error;
+mod material;
 mod mesh;
 mod texture;
 
 pub use backend::Renderer;
+pub use blinn::{bgra_to_tangent, blinn_specular, tangent_to_world};
 pub use camera::Camera;
 pub use error::RenderError;
-pub use mesh::{corridor_boxes, cube, Vertex};
+pub use mesh::{corridor_boxes, cube, tbn_from_normal, Vertex};
 pub use texture::{TextureFormat, TextureId, TextureUpload};
 
 use glam::{Mat4, Vec3, Vec4};
@@ -26,7 +29,10 @@ pub struct MeshInstance {
     pub index_count: u32,
     pub transform: Mat4,
     pub color: Vec4,
-    pub texture: TextureId,
+    pub albedo: TextureId,
+    pub normal: TextureId,
+    pub spec: TextureId,
+    pub spec_power: f32,
 }
 
 impl MeshInstance {
@@ -37,7 +43,10 @@ impl MeshInstance {
             index_count: 0,
             transform,
             color,
-            texture: TextureId::WHITE,
+            albedo: TextureId::WHITE,
+            normal: TextureId::FLAT_NORMAL,
+            spec: TextureId::BLACK_SPEC,
+            spec_power: 64.0,
         }
     }
 }

@@ -15,7 +15,10 @@ pub struct LevelDraw {
     pub first_index: u32,
     pub index_count: u32,
     pub color: [f32; 4],
-    pub texture: TextureId,
+    pub albedo: TextureId,
+    pub normal: TextureId,
+    pub spec: TextureId,
+    pub spec_power: f32,
 }
 
 struct LoadedLevel {
@@ -233,7 +236,10 @@ impl Simulation {
                     index_count: draw.index_count,
                     transform: Mat4::IDENTITY,
                     color: Vec4::from_array(draw.color),
-                    texture: draw.texture,
+                    albedo: draw.albedo,
+                    normal: draw.normal,
+                    spec: draw.spec,
+                    spec_power: draw.spec_power,
                 });
             }
         } else {

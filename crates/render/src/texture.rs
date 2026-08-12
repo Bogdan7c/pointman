@@ -10,11 +10,14 @@ pub struct TextureId(pub u32);
 
 impl TextureId {
     pub const WHITE: Self = Self(0);
+    pub const FLAT_NORMAL: Self = Self(1);
+    pub const BLACK_SPEC: Self = Self(2);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TextureFormat {
     Rgba8,
+    Bgra8,
     Bc1,
     Bc2,
     Bc3,
@@ -32,21 +35,6 @@ pub(crate) struct GpuTexture {
     pub image: vk::Image,
     pub view: vk::ImageView,
     pub alloc: Allocation,
-    pub set: vk::DescriptorSet,
-}
-
-pub(crate) fn create_material_layout(device: &Device) -> Result<vk::DescriptorSetLayout, RenderError> {
-    let binding = vk::DescriptorSetLayoutBinding::default()
-        .binding(0)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .descriptor_count(1)
-        .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-    Ok(unsafe {
-        device.create_descriptor_set_layout(
-            &vk::DescriptorSetLayoutCreateInfo::default().bindings(std::slice::from_ref(&binding)),
-            None,
-        )?
-    })
 }
 
 pub(crate) fn upload_texture(
@@ -54,9 +42,6 @@ pub(crate) fn upload_texture(
     queue: vk::Queue,
     cmd_pool: vk::CommandPool,
     allocator: &mut Allocator,
-    pool: vk::DescriptorPool,
-    layout: vk::DescriptorSetLayout,
-    sampler: vk::Sampler,
     data: TextureUpload<'_>,
 ) -> Result<GpuTexture, RenderError> {
     let format = vk_format(data.format);
@@ -228,28 +213,10 @@ pub(crate) fn upload_texture(
             None,
         )?
     };
-    let set = unsafe {
-        device.allocate_descriptor_sets(
-            &vk::DescriptorSetAllocateInfo::default()
-                .descriptor_pool(pool)
-                .set_layouts(std::slice::from_ref(&layout)),
-        )?[0]
-    };
-    let image_info = vk::DescriptorImageInfo::default()
-        .sampler(sampler)
-        .image_view(view)
-        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-    let write = vk::WriteDescriptorSet::default()
-        .dst_set(set)
-        .dst_binding(0)
-        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .image_info(std::slice::from_ref(&image_info));
-    unsafe { device.update_descriptor_sets(std::slice::from_ref(&write), &[]) };
     Ok(GpuTexture {
         image,
         view,
         alloc,
-        set,
     })
 }
 
@@ -263,9 +230,30 @@ pub(crate) fn white_upload() -> TextureUpload<'static> {
     }
 }
 
+pub(crate) fn flat_normal_upload() -> TextureUpload<'static> {
+    TextureUpload {
+        width: 1,
+        height: 1,
+        mip_count: 1,
+        format: TextureFormat::Rgba8,
+        bytes: &[128, 128, 255, 255],
+    }
+}
+
+pub(crate) fn black_spec_upload() -> TextureUpload<'static> {
+    TextureUpload {
+        width: 1,
+        height: 1,
+        mip_count: 1,
+        format: TextureFormat::Rgba8,
+        bytes: &[0, 0, 0, 255],
+    }
+}
+
 fn vk_format(format: TextureFormat) -> vk::Format {
     match format {
         TextureFormat::Rgba8 => vk::Format::R8G8B8A8_UNORM,
+        TextureFormat::Bgra8 => vk::Format::B8G8R8A8_UNORM,
         TextureFormat::Bc1 => vk::Format::BC1_RGBA_UNORM_BLOCK,
         TextureFormat::Bc2 => vk::Format::BC2_UNORM_BLOCK,
         TextureFormat::Bc3 => vk::Format::BC3_UNORM_BLOCK,
@@ -274,7 +262,9 @@ fn vk_format(format: TextureFormat) -> vk::Format {
 
 fn mip_bytes(width: u32, height: u32, format: TextureFormat) -> usize {
     match format {
-        TextureFormat::Rgba8 => width as usize * height as usize * 4,
+        TextureFormat::Rgba8 | TextureFormat::Bgra8 => {
+            width as usize * height as usize * 4
+        }
         TextureFormat::Bc1 => {
             let bx = (width.max(1) + 3) / 4;
             let by = (height.max(1) + 3) / 4;

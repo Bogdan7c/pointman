@@ -24,6 +24,8 @@ pub struct WorldVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub tangent: [f32; 3],
+    pub binormal: [f32; 3],
 }
 
 #[derive(Debug, Clone)]
@@ -301,6 +303,8 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
     let mut pos = [0.0f32; 3];
     let mut normal = [0.0, 1.0, 0.0];
     let mut uv = [0.0f32; 2];
+    let mut tangent = [1.0, 0.0, 0.0];
+    let mut binormal = [0.0, 0.0, -1.0];
     let mut have_pos = false;
     for prop in def {
         let size = match prop.format {
@@ -326,6 +330,8 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
             }
             (3, 2) => normal = unpack3(slice),
             (5, 1) => uv = unpack2(slice),
+            (6, 2) => tangent = unpack3(slice),
+            (7, 2) => binormal = unpack3(slice),
             _ => {}
         }
     }
@@ -336,6 +342,8 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
         position: pos,
         normal,
         uv,
+        tangent,
+        binormal,
     })
 }
 
@@ -427,5 +435,50 @@ mod tests {
         let v = decode_vertex(&bytes, &def).unwrap();
         assert_eq!(v.position, [1.0, 2.0, 3.0]);
         assert_eq!(v.uv, [0.25, 0.75]);
+    }
+
+    #[test]
+    fn decode_tangent_binormal_no_blender_swap() {
+        let def = [
+            VertexProp {
+                offset: 0,
+                format: 2,
+                location: 0,
+                id: 0,
+            },
+            VertexProp {
+                offset: 12,
+                format: 2,
+                location: 3,
+                id: 0,
+            },
+            VertexProp {
+                offset: 24,
+                format: 2,
+                location: 6,
+                id: 0,
+            },
+            VertexProp {
+                offset: 36,
+                format: 2,
+                location: 7,
+                id: 0,
+            },
+        ];
+        let mut bytes = vec![0u8; 48];
+        write3(&mut bytes, 0, [0.0, 0.0, 0.0]);
+        write3(&mut bytes, 12, [0.0, 1.0, 0.0]);
+        write3(&mut bytes, 24, [1.0, 0.0, 0.0]);
+        write3(&mut bytes, 36, [0.0, 0.0, -1.0]);
+        let v = decode_vertex(&bytes, &def).unwrap();
+        assert_eq!(v.normal, [0.0, 1.0, 0.0]);
+        assert_eq!(v.tangent, [1.0, 0.0, 0.0]);
+        assert_eq!(v.binormal, [0.0, 0.0, -1.0]);
+    }
+
+    fn write3(buf: &mut [u8], off: usize, v: [f32; 3]) {
+        buf[off..off + 4].copy_from_slice(&v[0].to_le_bytes());
+        buf[off + 4..off + 8].copy_from_slice(&v[1].to_le_bytes());
+        buf[off + 8..off + 12].copy_from_slice(&v[2].to_le_bytes());
     }
 }

@@ -16,7 +16,8 @@ layout(set = 0, binding = 0) uniform Frame {
 
 layout(set = 1, binding = 0) uniform sampler2D u_albedo;
 layout(set = 1, binding = 1) uniform sampler2D u_normal;
-layout(set = 1, binding = 2) uniform sampler2D u_depth;
+layout(set = 1, binding = 2) uniform sampler2D u_spec;
+layout(set = 1, binding = 3) uniform sampler2D u_depth;
 
 void main() {
     vec4 albedo = texture(u_albedo, v_uv);
@@ -27,6 +28,8 @@ void main() {
     }
 
     vec3 n = normalize(texture(u_normal, v_uv).xyz * 2.0 - 1.0);
+    vec4 spec = texture(u_spec, v_uv);
+    float power = max(spec.a * 255.0, 1.0);
     vec4 clip = vec4(v_uv * 2.0 - 1.0, depth, 1.0);
     vec4 world = frame.inv_view_proj * clip;
     vec3 pos = world.xyz / world.w;
@@ -43,9 +46,9 @@ void main() {
         float att = clamp(1.0 - dist / radius, 0.0, 1.0);
         att *= att;
         float ndotl = max(dot(n, L), 0.0);
-        float spec = pow(max(dot(n, normalize(L + view)), 0.0), 48.0);
+        float spec_term = pow(max(dot(n, normalize(L + view)), 0.0), power);
         vec3 col = frame.color_intensity[i].rgb * frame.color_intensity[i].a;
-        lit += (albedo.rgb * ndotl + vec3(spec) * 0.25) * col * att;
+        lit += (albedo.rgb * ndotl + spec.rgb * spec_term) * col * att;
     }
     out_color = vec4(lit, 1.0);
 }

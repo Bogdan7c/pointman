@@ -68,6 +68,23 @@ impl Material {
     pub fn specular_map(&self) -> Option<&str> {
         self.string_def("tSpecularMap")
     }
+
+    pub fn float_def(&self, name: &str) -> Option<f32> {
+        for layer in &self.fx {
+            for (key, value) in &layer.defs {
+                if key.eq_ignore_ascii_case(name) {
+                    if let MatValue::Float(v) = value {
+                        return Some(*v);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn max_specular_power(&self) -> f32 {
+        self.float_def("fMaxSpecularPower").unwrap_or(64.0)
+    }
 }
 
 fn read_fx(c: &mut Cursor<&[u8]>) -> Result<MatFx, AssetError> {
@@ -136,6 +153,31 @@ mod tests {
         let mat = Material::parse(&bytes).unwrap();
         assert_eq!(mat.diffuse_map(), Some(r"Textures\Office\Floor.dds"));
         assert_eq!(mat.string_def("TDIFFUSEMAP"), Some(r"Textures\Office\Floor.dds"));
+    }
+
+    #[test]
+    fn parse_spec_normal_and_power() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"LTMI");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, "shaders/rigid/Solid/specular.fx");
+        bytes.extend_from_slice(&4u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, "tDiffuseMap");
+        write_lt(&mut bytes, r"Tex\Office\Floor_D.dds");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, "tNormalMap");
+        write_lt(&mut bytes, r"Tex\Office\Floor_N.dds");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, "tSpecularMap");
+        write_lt(&mut bytes, r"Tex\Office\Floor_S.dds");
+        bytes.extend_from_slice(&5u32.to_le_bytes());
+        write_lt(&mut bytes, "fMaxSpecularPower");
+        bytes.extend_from_slice(&64f32.to_le_bytes());
+        let mat = Material::parse(&bytes).unwrap();
+        assert_eq!(mat.normal_map(), Some(r"Tex\Office\Floor_N.dds"));
+        assert_eq!(mat.specular_map(), Some(r"Tex\Office\Floor_S.dds"));
+        assert_eq!(mat.max_specular_power(), 64.0);
     }
 
     fn write_lt(buf: &mut Vec<u8>, s: &str) {
