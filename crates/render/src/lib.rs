@@ -10,10 +10,32 @@ pub use mesh::{corridor_boxes, cube, Vertex};
 
 use glam::{Mat4, Vec3, Vec4};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct MeshId(pub u32);
+
+impl MeshId {
+    pub const CUBE: Self = Self(0);
+}
+
 #[derive(Clone, Debug)]
 pub struct MeshInstance {
+    pub mesh: MeshId,
+    pub first_index: u32,
+    pub index_count: u32,
     pub transform: Mat4,
     pub color: Vec4,
+}
+
+impl MeshInstance {
+    pub fn new(mesh: MeshId, transform: Mat4, color: Vec4) -> Self {
+        Self {
+            mesh,
+            first_index: 0,
+            index_count: 0,
+            transform,
+            color,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

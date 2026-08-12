@@ -1,11 +1,17 @@
 mod input;
 
-pub use input::{Input, xbox360};
+pub use input::{xbox360, Input};
 
 use glam::{Mat4, Vec3, Vec4};
 use pointman_ai::replica::{self, ALERT, HAS_WEAPON, TARGET_VISIBLE, WEAPON_LOADED};
 use pointman_ai::{Goal, Plan, Planner, WorldState};
-use pointman_render::{corridor_boxes, Camera, DrawList, MeshInstance, PointLight};
+use pointman_assets::SurfaceDraw;
+use pointman_render::{corridor_boxes, Camera, DrawList, MeshId, MeshInstance, PointLight};
+
+struct LoadedLevel {
+    mesh: MeshId,
+    draws: Vec<SurfaceDraw>,
+}
 
 pub struct Replica {
     pub position: Vec3,
@@ -24,17 +30,22 @@ pub struct Simulation {
     crouch: bool,
     flashlight: bool,
     slowmo: bool,
+    /// 1.0 = demo corridor (metres). 100.0 ≈ LithTech centimetres.
+    unit: f32,
+    /// World-space floor used for eye height (LithTech Y-up).
+    floor_y: f32,
+    level: Option<LoadedLevel>,
 }
 
 impl Simulation {
     pub fn new() -> Self {
-        let world = WorldState::from_pairs(&[
-            (ALERT, 0),
-            (HAS_WEAPON, 1),
-            (WEAPON_LOADED, 1),
-        ]);
+        let world = WorldState::from_pairs(&[(ALERT, 0), (HAS_WEAPON, 1), (WEAPON_LOADED, 1)]);
         let planner = replica::planner();
-        let goals = vec![replica::kill_enemy(), replica::investigate(), replica::patrol()];
+        let goals = vec![
+            replica::kill_enemy(),
+            replica::investigate(),
+            replica::patrol(),
+        ];
         let plan = planner.best_goal(&world, &goals).map(|(_, p)| p);
         Self {
             camera: Camera::default(),
@@ -51,7 +62,37 @@ impl Simulation {
             crouch: false,
             flashlight: true,
             slowmo: false,
+            unit: 1.0,
+            floor_y: 0.0,
+            level: None,
         }
+    }
+
+    pub fn set_level(
+        &mut self,
+        mesh: MeshId,
+        draws: Vec<SurfaceDraw>,
+        min: Vec3,
+        max: Vec3,
+        spawn: Option<Vec3>,
+    ) {
+        self.unit = 100.0;
+        self.level = Some(LoadedLevel { mesh, draws });
+        let center = (min + max) * 0.5;
+        let extent = max - min;
+        let spawn = spawn.unwrap_or(Vec3::new(center.x, min.y, center.z));
+        self.floor_y = spawn.y;
+        self.camera.position = Vec3::new(spawn.x, spawn.y + 1.6 * self.unit, spawn.z);
+        self.camera.z_near = 4.0;
+        self.camera.z_far = 12000.0;
+        self.replica.position = self.camera.position + Vec3::new(2.0, 0.0, 4.0) * self.unit;
+        log::info!(
+            "level camera {:?}  extent {:?}  z_far {:.0}  surfaces {}",
+            self.camera.position,
+            extent,
+            self.camera.z_far,
+            self.level.as_ref().map(|l| l.draws.len()).unwrap_or(0)
+        );
     }
 
     pub fn time_scale(&self) -> f32 {
@@ -96,21 +137,28 @@ impl Simulation {
                 4.2
             } else {
                 2.4
-            };
+            } * self.unit;
             self.camera.position += wish.normalize() * speed * dt * input.move_axis.length().min(1.0);
         }
-        self.camera.position.y = if self.crouch { 1.05 } else { 1.6 };
+        self.camera.position.y = self.floor_y
+            + if self.crouch {
+                1.05 * self.unit
+            } else {
+                1.6 * self.unit
+            };
 
         let dist = self.camera.position.distance(self.replica.position);
-        let alert = if dist < 6.0 {
+        let alert = if dist < 6.0 * self.unit {
             2
-        } else if dist < 14.0 {
+        } else if dist < 14.0 * self.unit {
             1
         } else {
             0
         };
         self.replica.world.set(ALERT, alert);
-        self.replica.world.set(TARGET_VISIBLE, i32::from(dist < 10.0));
+        self.replica
+            .world
+            .set(TARGET_VISIBLE, i32::from(dist < 10.0 * self.unit));
         if alert == 2 && self.time as i32 % 7 == 0 {
             self.replica.world.set(WEAPON_LOADED, 0);
         }
@@ -128,8 +176,8 @@ impl Simulation {
         if let Some(plan) = &self.replica.plan {
             if plan.steps.iter().any(|s| *s == "Advance" || *s == "Attack") {
                 let dir = (self.camera.position - self.replica.position) * Vec3::new(1.0, 0.0, 1.0);
-                if dir.length_squared() > 1.0 {
-                    self.replica.position += dir.normalize() * 1.6 * dt;
+                if dir.length_squared() > 1.0 * self.unit * self.unit {
+                    self.replica.position += dir.normalize() * 1.6 * self.unit * dt;
                 }
             }
         }
@@ -138,26 +186,40 @@ impl Simulation {
     }
 
     pub fn draw_list(&self) -> DrawList {
-        let mut instances: Vec<MeshInstance> = corridor_boxes()
-            .into_iter()
-            .map(|(center, scale, color)| MeshInstance {
-                transform: Mat4::from_translation(center) * Mat4::from_scale(scale),
-                color: Vec4::from_array(color),
-            })
-            .collect();
+        let mut instances = Vec::new();
+        if let Some(level) = &self.level {
+            for draw in &level.draws {
+                instances.push(MeshInstance {
+                    mesh: level.mesh,
+                    first_index: draw.first_index,
+                    index_count: draw.index_count,
+                    transform: Mat4::IDENTITY,
+                    color: Vec4::from_array(draw.color),
+                });
+            }
+        } else {
+            instances.extend(corridor_boxes().into_iter().map(|(center, scale, color)| {
+                MeshInstance::new(
+                    MeshId::CUBE,
+                    Mat4::from_translation(center) * Mat4::from_scale(scale),
+                    Vec4::from_array(color),
+                )
+            }));
+        }
 
         let color = match self.replica.plan.as_ref().map(|p| p.goal) {
             Some("KillEnemy") => Vec4::new(0.85, 0.12, 0.10, 1.0),
             Some("InvestigateDisturbance") => Vec4::new(0.85, 0.7, 0.15, 1.0),
             _ => Vec4::new(0.25, 0.4, 0.75, 1.0),
         };
-        instances.push(MeshInstance {
-            transform: Mat4::from_translation(self.replica.position)
-                * Mat4::from_scale(Vec3::new(0.6, 1.8, 0.6)),
+        instances.push(MeshInstance::new(
+            MeshId::CUBE,
+            Mat4::from_translation(self.replica.position)
+                * Mat4::from_scale(Vec3::new(0.6, 1.8, 0.6) * self.unit),
             color,
-        });
+        ));
 
-        let flashlight = self.camera.position + self.camera.forward() * 0.4;
+        let flashlight = self.camera.position + self.camera.forward() * 0.4 * self.unit;
         let flash_i = if self.flashlight { 18.0 } else { 0.0 };
         DrawList {
             camera: self.camera.clone(),
@@ -165,21 +227,21 @@ impl Simulation {
             lights: vec![
                 PointLight {
                     position: flashlight,
-                    radius: 14.0,
+                    radius: 14.0 * self.unit,
                     color: Vec3::new(1.0, 0.95, 0.85),
                     intensity: flash_i,
                 },
                 PointLight {
-                    position: Vec3::new(0.0, 2.4, -6.0),
-                    radius: 8.0,
+                    position: self.camera.position + Vec3::Y * 0.8 * self.unit,
+                    radius: 8.0 * self.unit,
                     color: Vec3::new(1.0, 0.55, 0.25),
                     intensity: 4.0 + (self.time * 6.0).sin().abs() * 2.0,
                 },
                 PointLight {
-                    position: self.replica.position + Vec3::Y * 0.6,
-                    radius: 5.0,
-                    color: Vec3::new(0.4, 0.7, 1.0),
+                    position: self.replica.position + Vec3::Y * 0.6 * self.unit,
+                    radius: 5.0 * self.unit,
                     intensity: 2.5,
+                    color: Vec3::new(0.4, 0.7, 1.0),
                 },
             ],
         }

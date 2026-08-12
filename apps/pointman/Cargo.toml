@@ -8,6 +8,7 @@ license.workspace = true
 pointman-engine.workspace = true
 pointman-game.workspace = true
 pointman-render.workspace = true
+pointman-assets.workspace = true
 winit.workspace = true
 env_logger.workspace = true
 log.workspace = true

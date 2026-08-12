@@ -6,7 +6,12 @@ mod paths;
 pub use config::Config;
 pub use paths::{detect_game_root, STEAM_APP_ID, STEAM_FOLDER};
 
-use pointman_assets::{kind_from_path, ArchHeader, GameArchive, ResourceKind};
+/// Campaign intro map inside the retail Arch00 tree.
+pub const INTRO_WORLD: &str = "Worlds/Release/Intro.World00p";
+
+use pointman_assets::{
+    kind_from_path, ArchHeader, GameArchive, ResourceKind, WorldRender,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -162,6 +167,23 @@ impl GameMount {
         cat.worlds.sort_by(|a, b| a.0.cmp(&b.0));
         cat.models.sort_by(|a, b| a.0.cmp(&b.0));
         cat
+    }
+
+    pub fn read_file(&self, logical: &str) -> Result<Vec<u8>, pointman_assets::AssetError> {
+        let want = logical.replace('\\', "/");
+        for path in self.archives.iter().rev() {
+            let Ok(mut archive) = GameArchive::open(path) else {
+                continue;
+            };
+            if let Ok(bytes) = archive.read(&want) {
+                return Ok(bytes);
+            }
+        }
+        Err(pointman_assets::AssetError::NotFound(logical.to_string()))
+    }
+
+    pub fn read_world(&self, logical: &str) -> Result<WorldRender, pointman_assets::AssetError> {
+        WorldRender::parse(&self.read_file(logical)?)
     }
 }
 

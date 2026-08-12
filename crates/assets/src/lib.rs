@@ -13,7 +13,10 @@ pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
 pub use error::AssetError;
 pub use extensions::{kind_from_path, ResourceKind};
 pub use rez::{RezArchive, RezEntry};
-pub use world00p::{WorldHeader, FEAR_WORLD_MAGIC, FEAR_WORLD_VERSION};
+pub use world00p::{
+    SurfaceDraw, WorldHeader, WorldRender, WorldSurface, WorldVertex, FEAR_WORLD_MAGIC,
+    FEAR_WORLD_VERSION,
+};
 
 use std::fs::File;
 use std::io::{Read, Seek};

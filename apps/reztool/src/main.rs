@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
-use pointman_assets::{kind_from_path, ArchHeader, GameArchive, WorldHeader};
+use pointman_assets::{kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldRender};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -15,6 +15,12 @@ enum Cmd {
     Probe { archive: PathBuf },
     Catalog { root: PathBuf },
     List { archive: PathBuf },
+    /// Parse a packed World00p (file on disk, or game root + --name).
+    World {
+        path: PathBuf,
+        #[arg(long, default_value = "Worlds/Release/Intro.World00p")]
+        name: String,
+    },
     Extract {
         archive: PathBuf,
         out: PathBuf,
@@ -61,6 +67,37 @@ fn main() -> anyhow::Result<()> {
             let pack = GameArchive::open(&archive)?;
             for name in pack.list() {
                 println!("{name}");
+            }
+        }
+        Cmd::World { path, name } => {
+            let bytes = if path.is_dir() {
+                let mount = pointman_game::GameMount::discover(&path);
+                mount.read_file(&name).with_context(|| name.clone())?
+            } else {
+                std::fs::read(&path).with_context(|| path.display().to_string())?
+            };
+            let world = WorldRender::parse(&bytes)?;
+            let (verts, indices, draws) = world.flatten();
+            println!(
+                "v{}  surfaces {} (drawn {})  verts {}  indices {}  bounds {:?} → {:?}  offset {:?}",
+                world.header.version,
+                world.surfaces.len(),
+                draws.len(),
+                verts.len(),
+                indices.len(),
+                world.header.min,
+                world.header.max,
+                world.header.offset
+            );
+            for (i, surf) in world.surfaces.iter().take(16).enumerate() {
+                println!(
+                    "  [{i}] tris {}  {}",
+                    surf.indices.len() / 3,
+                    surf.material
+                );
+            }
+            if world.surfaces.len() > 16 {
+                println!("  … {} more", world.surfaces.len() - 16);
             }
         }
         Cmd::Extract {

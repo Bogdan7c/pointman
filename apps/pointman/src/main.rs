@@ -2,10 +2,10 @@ mod gamepad;
 
 use anyhow::Context;
 use gamepad::Devices;
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use pointman_engine::Simulation;
-use pointman_game::{Config, GameMount};
-use pointman_render::Renderer;
+use pointman_game::{Config, GameMount, INTRO_WORLD};
+use pointman_render::{Renderer, Vertex};
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
@@ -20,10 +20,11 @@ struct App {
     devices: Devices,
     last: Instant,
     mouse_captured: bool,
+    mount: Option<GameMount>,
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(mount: Option<GameMount>) -> Self {
         Self {
             window: None,
             renderer: None,
@@ -31,6 +32,7 @@ impl App {
             devices: Devices::new(),
             last: Instant::now(),
             mouse_captured: false,
+            mount,
         }
     }
 
@@ -58,8 +60,11 @@ impl ApplicationHandler for App {
             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0));
         let window = event_loop.create_window(attrs).expect("create window");
         match Renderer::new(&window) {
-            Ok(renderer) => {
+            Ok(mut renderer) => {
                 log::info!("Vulkan deferred renderer ready");
+                if let Some(mount) = self.mount.as_ref() {
+                    load_intro(&mut renderer, &mut self.sim, mount);
+                }
                 self.renderer = Some(renderer);
             }
             Err(err) => {
@@ -145,7 +150,8 @@ fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     log::info!("Pointman — native F.E.A.R. engine (Vulkan)");
     let cfg = Config::load();
-    if let Some(mount) = GameMount::from_config(&cfg) {
+    let mount = GameMount::from_config(&cfg);
+    if let Some(mount) = mount.as_ref() {
         mount.log_inventory();
         mount.catalog().log_summary();
     } else {
@@ -156,7 +162,38 @@ fn main() -> anyhow::Result<()> {
 
     let event_loop = EventLoop::new().context("event loop")?;
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = App::new();
+    let mut app = App::new(mount);
     event_loop.run_app(&mut app).context("run")?;
     Ok(())
+}
+
+fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) {
+    match mount.read_world(INTRO_WORLD) {
+        Ok(world) => {
+            let (verts, indices, draws) = world.flatten();
+            log::info!(
+                "{INTRO_WORLD}: {} surfaces, {} verts, {} indices, bounds {:?} → {:?}",
+                world.surfaces.len(),
+                verts.len(),
+                indices.len(),
+                world.header.min,
+                world.header.max
+            );
+            let gpu: Vec<Vertex> = verts
+                .iter()
+                .map(|v| Vertex {
+                    pos: v.position,
+                    normal: v.normal,
+                })
+                .collect();
+            match renderer.upload_mesh(&gpu, &indices) {
+                Ok(mesh) => {
+                    let spawn = verts.first().map(|v| Vec3::from_array(v.position));
+                    sim.set_level(mesh, draws, world.header.min, world.header.max, spawn);
+                }
+                Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
+            }
+        }
+        Err(err) => log::error!("load {INTRO_WORLD}: {err}"),
+    }
 }

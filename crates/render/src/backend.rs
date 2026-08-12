@@ -1,5 +1,5 @@
 use crate::mesh::Vertex;
-use crate::{DrawList, RenderError};
+use crate::{DrawList, MeshId, RenderError};
 use ash::khr::{surface as khr_surface, swapchain as khr_swapchain};
 use ash::{vk, Device, Entry, Instance};
 use bytemuck::{Pod, Zeroable};
@@ -34,6 +34,12 @@ struct Push {
 struct GpuBuffer {
     buffer: vk::Buffer,
     alloc: Option<Allocation>,
+}
+
+struct GpuMesh {
+    vb: GpuBuffer,
+    ib: GpuBuffer,
+    index_count: u32,
 }
 
 struct GpuImage {
@@ -86,9 +92,7 @@ pub struct Renderer {
     cmd_pool: vk::CommandPool,
     frames: Vec<FrameSync>,
     frame_index: usize,
-    cube_vb: GpuBuffer,
-    cube_ib: GpuBuffer,
-    cube_indices: u32,
+    meshes: Vec<GpuMesh>,
 }
 
 impl Renderer {
@@ -307,7 +311,8 @@ impl Renderer {
             )?[0]
         };
 
-        let (verts, inds) = crate::mesh::cube();
+        let (verts, inds16) = crate::mesh::cube();
+        let inds: Vec<u32> = inds16.iter().map(|&i| u32::from(i)).collect();
         let cube_vb = upload_buffer(
             &device,
             queue,
@@ -362,9 +367,11 @@ impl Renderer {
             cmd_pool,
             frames,
             frame_index: 0,
-            cube_vb,
-            cube_ib,
-            cube_indices: inds.len() as u32,
+            meshes: vec![GpuMesh {
+                vb: cube_vb,
+                ib: cube_ib,
+                index_count: inds.len() as u32,
+            }],
         };
         renderer.recreate_gbuffer()?;
         Ok(renderer)
@@ -375,6 +382,42 @@ impl Renderer {
             return Ok(());
         }
         self.recreate_swapchain(vk::Extent2D { width, height })
+    }
+
+    pub fn upload_mesh(
+        &mut self,
+        vertices: &[Vertex],
+        indices: &[u32],
+    ) -> Result<MeshId, RenderError> {
+        let allocator = self
+            .allocator
+            .as_mut()
+            .ok_or_else(|| RenderError::Alloc("allocator gone".into()))?;
+        let vb = upload_buffer(
+            &self.device,
+            self.queue,
+            self.cmd_pool,
+            allocator,
+            bytemuck::cast_slice(vertices),
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            "mesh-vb",
+        )?;
+        let ib = upload_buffer(
+            &self.device,
+            self.queue,
+            self.cmd_pool,
+            allocator,
+            bytemuck::cast_slice(indices),
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            "mesh-ib",
+        )?;
+        let id = MeshId(self.meshes.len() as u32);
+        self.meshes.push(GpuMesh {
+            vb,
+            ib,
+            index_count: indices.len() as u32,
+        });
+        Ok(id)
     }
 
     pub fn draw(&mut self, list: &DrawList) -> Result<(), RenderError> {
@@ -541,11 +584,42 @@ impl Renderer {
                 &[],
             );
             self.device
-                .cmd_bind_vertex_buffers(cmd, 0, &[self.cube_vb.buffer], &[0]);
-            self.device
-                .cmd_bind_index_buffer(cmd, self.cube_ib.buffer, 0, vk::IndexType::UINT16);
+                .cmd_bind_vertex_buffers(cmd, 0, &[self.meshes[0].vb.buffer], &[0]);
+            self.device.cmd_bind_index_buffer(
+                cmd,
+                self.meshes[0].ib.buffer,
+                0,
+                vk::IndexType::UINT32,
+            );
         }
+        let mut bound = 0u32;
         for inst in &list.instances {
+            let mesh_id = inst.mesh.0 as usize;
+            if mesh_id >= self.meshes.len() {
+                continue;
+            }
+            if mesh_id as u32 != bound {
+                bound = mesh_id as u32;
+                unsafe {
+                    self.device.cmd_bind_vertex_buffers(
+                        cmd,
+                        0,
+                        &[self.meshes[mesh_id].vb.buffer],
+                        &[0],
+                    );
+                    self.device.cmd_bind_index_buffer(
+                        cmd,
+                        self.meshes[mesh_id].ib.buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                }
+            }
+            let index_count = if inst.index_count == 0 {
+                self.meshes[mesh_id].index_count
+            } else {
+                inst.index_count
+            };
             let push = Push {
                 model: inst.transform.to_cols_array_2d(),
                 color: inst.color.to_array(),
@@ -558,7 +632,7 @@ impl Renderer {
                     0,
                     bytemuck::bytes_of(&push),
                 );
-                self.device.cmd_draw_indexed(cmd, self.cube_indices, 1, 0, 0, 0);
+                self.device.cmd_draw_indexed(cmd, index_count, 1, inst.first_index, 0, 0);
             }
         }
         unsafe { self.device.cmd_end_render_pass(cmd) };
@@ -755,14 +829,18 @@ impl Drop for Renderer {
             }
         }
         unsafe {
-            self.device.destroy_buffer(self.cube_vb.buffer, None);
-            self.device.destroy_buffer(self.cube_ib.buffer, None);
+            for mesh in &mut self.meshes {
+                self.device.destroy_buffer(mesh.vb.buffer, None);
+                self.device.destroy_buffer(mesh.ib.buffer, None);
+            }
         }
-        if let Some(alloc) = self.cube_vb.alloc.take() {
-            let _ = allocator.free(alloc);
-        }
-        if let Some(alloc) = self.cube_ib.alloc.take() {
-            let _ = allocator.free(alloc);
+        for mesh in self.meshes.drain(..) {
+            if let Some(alloc) = mesh.vb.alloc {
+                let _ = allocator.free(alloc);
+            }
+            if let Some(alloc) = mesh.ib.alloc {
+                let _ = allocator.free(alloc);
+            }
         }
         drop(allocator);
         unsafe {

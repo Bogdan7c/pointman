@@ -18,18 +18,18 @@
 
 ## Фазы
 
-### 0. Каркас — в работе
+### 0. Каркас — готово
 - [x] Workspace, Vulkan deferred, GOAP, Arch00/REZ, World00p header
 - [x] Steam-пути, `Default.archcfg`, probe архивов
 - [x] Нативный геймпад, схема Xbox 360
 - [x] CI, `main`, remote
 - [x] Индекс World00p/Model00p/DDS по архивам без полной распаковки
 
-### 1. Мир на экране
-- [ ] Render surfaces из `World00p` (vertex blocks, materials)
+### 1. Мир на экране — в работе
+- [x] Render surfaces из `World00p` (vertex blocks, materials)
 - [ ] DDS → Vulkan, `Mat00` (diffuse/spec/normal)
 - [ ] Камера/коллизия по BSP, не сквозь стены
-- [ ] Загрузка Intro / первой карты кампании
+- [x] Загрузка Intro / первой карты кампании (`Worlds/Release/Intro.World00p`, без текстур и коллизии)
 
 ### 2. Игрок 1:1
 - [ ] Ходьба, присед, lean, прыжок, фонарик
@@ -68,4 +68,4 @@
 - [ ] Рендер: clustered/deferred, тени, MSAA/TAA — **без ломки оригинального lighting model**
 - [ ] Ребинды, Steam Input как опция, дефолт — 360
 
-Порядок работы: не перескакивать фазы. Следующий пункт после каркаса — **индекс ассетов и первая World00p на экране**.
+Порядок работы: не перескакивать фазы. Следующий пункт — **DDS + Mat00** (сначала diffuse на Intro, потом spec/normal).
