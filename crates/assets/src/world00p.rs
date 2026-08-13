@@ -378,7 +378,10 @@ fn decode_surface_indices(
         let i0 = u16::from_le_bytes(blob[off..off + 2].try_into().unwrap()) as i32 - offset;
         let i1 = u16::from_le_bytes(blob[off + 2..off + 4].try_into().unwrap()) as i32 - offset;
         let i2 = u16::from_le_bytes(blob[off + 4..off + 6].try_into().unwrap()) as i32 - offset;
-        for i in [i0, i2, i1] {
+        // Порядок как в World00p: он совпадает с vertex normal. G-buffer кулит BACK при
+        // CCW; перестановка i1/i2 выворачивала пол двора — камера смотрела на заднюю грань,
+        // глубины не было, lighting pass рисовал небо «сквозь землю».
+        for i in [i0, i1, i2] {
             if i < 0 || i as usize >= vert_count {
                 return Err(AssetError::Invalid("index remap"));
             }
@@ -474,6 +477,136 @@ mod tests {
         assert_eq!(v.normal, [0.0, 1.0, 0.0]);
         assert_eq!(v.tangent, [1.0, 0.0, 0.0]);
         assert_eq!(v.binormal, [0.0, 0.0, -1.0]);
+    }
+
+    #[test]
+    fn floor_triangle_keeps_file_winding_matching_vertex_normal() {
+        // Пол: (0,0,0) → (0,0,10) → (10,0,0). Сверху CCW, геометрическая нормаль +Y.
+        // Файл хранит 0,1,2 — парсер не должен менять на 0,2,1.
+        let raw = RawSurface {
+            vertices_start: 0,
+            vertices_count: 3,
+            vertex_stride: 12,
+            indices_start: 0,
+            indices_base: 0,
+            triangle_count: 1,
+            material_id: 0,
+            pack_type_id: 0,
+        };
+        let mut blob = vec![0u8; 6];
+        blob[0..2].copy_from_slice(&0u16.to_le_bytes());
+        blob[2..4].copy_from_slice(&1u16.to_le_bytes());
+        blob[4..6].copy_from_slice(&2u16.to_le_bytes());
+        let indices = decode_surface_indices(&blob, &raw, 3).unwrap();
+        assert_eq!(indices, vec![0, 1, 2]);
+
+        let verts = [
+            WorldVertex {
+                position: [0.0, 0.0, 0.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 0.0],
+                tangent: [1.0, 0.0, 0.0],
+                binormal: [0.0, 0.0, -1.0],
+            },
+            WorldVertex {
+                position: [0.0, 0.0, 10.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [0.0, 1.0],
+                tangent: [1.0, 0.0, 0.0],
+                binormal: [0.0, 0.0, -1.0],
+            },
+            WorldVertex {
+                position: [10.0, 0.0, 0.0],
+                normal: [0.0, 1.0, 0.0],
+                uv: [1.0, 0.0],
+                tangent: [1.0, 0.0, 0.0],
+                binormal: [0.0, 0.0, -1.0],
+            },
+        ];
+        let (agree, total) = winding_agrees_with_normals(&verts, &indices);
+        assert_eq!(total, 1);
+        assert_eq!(agree, 1);
+    }
+
+    #[test]
+    fn intro_courtyard_floor_winding_matches_normals_if_extracted() {
+        // Розничный Intro — не CI. Есть файл → пол двора должен смотреть вверх, не в землю.
+        let path = std::env::var("POINTMAN_INTRO_WORLD00P").unwrap_or_else(|_| {
+            "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into()
+        });
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let world = WorldRender::parse(&bytes).unwrap();
+        let spawn = [-1100.0f32, -1436.0, -370.0];
+        let mut agree = 0usize;
+        let mut total = 0usize;
+        for surf in &world.surfaces {
+            if !courtyard_floor_near_spawn(surf, spawn) {
+                continue;
+            }
+            let (ok, n) = winding_agrees_with_normals(&surf.vertices, &surf.indices);
+            agree += ok;
+            total += n;
+        }
+        assert!(
+            total >= 100,
+            "ожидали горизонтальный пол у спавна, нашли {total} треугольников"
+        );
+        let ratio = agree as f32 / total as f32;
+        assert!(
+            ratio > 0.95,
+            "winding пола двора {agree}/{total} ({ratio:.2}) не совпадает с нормалями"
+        );
+    }
+
+    fn courtyard_floor_near_spawn(surf: &WorldSurface, spawn: [f32; 3]) -> bool {
+        let mut min = [f32::MAX; 3];
+        let mut max = [f32::MIN; 3];
+        let mut ny = 0.0f32;
+        for v in &surf.vertices {
+            ny += v.normal[1];
+            for i in 0..3 {
+                min[i] = min[i].min(v.position[i]);
+                max[i] = max[i].max(v.position[i]);
+            }
+        }
+        if surf.vertices.is_empty() {
+            return false;
+        }
+        ny /= surf.vertices.len() as f32;
+        if ny < 0.85 {
+            return false;
+        }
+        let dx = (spawn[0] - spawn[0].clamp(min[0], max[0])).abs();
+        let dy = (spawn[1] - spawn[1].clamp(min[1], max[1])).abs();
+        let dz = (spawn[2] - spawn[2].clamp(min[2], max[2])).abs();
+        (dx * dx + dy * dy + dz * dz).sqrt() < 500.0
+    }
+
+    fn winding_agrees_with_normals(verts: &[WorldVertex], indices: &[u32]) -> (usize, usize) {
+        let mut agree = 0usize;
+        let mut total = 0usize;
+        for tri in indices.chunks_exact(3) {
+            let a = Vec3::from_array(verts[tri[0] as usize].position);
+            let b = Vec3::from_array(verts[tri[1] as usize].position);
+            let c = Vec3::from_array(verts[tri[2] as usize].position);
+            let cross = (b - a).cross(c - a);
+            if cross.length_squared() < 1e-8 {
+                continue;
+            }
+            let n = Vec3::from_array(verts[tri[0] as usize].normal)
+                + Vec3::from_array(verts[tri[1] as usize].normal)
+                + Vec3::from_array(verts[tri[2] as usize].normal);
+            if n.length_squared() < 1e-8 {
+                continue;
+            }
+            total += 1;
+            if cross.normalize().dot(n.normalize()) > 0.0 {
+                agree += 1;
+            }
+        }
+        (agree, total)
     }
 
     fn write3(buf: &mut [u8], off: usize, v: [f32; 3]) {
