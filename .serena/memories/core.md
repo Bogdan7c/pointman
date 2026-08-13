@@ -8,9 +8,9 @@
 
 ## Текущая фаза
 
-Сейчас фаза 1 (картинка Intro 1:1). Код 1.1 (SkyPointer/SkyCamera, `DdsCubemap`, lighting cubemap) есть; фаза не закрыта, пока двор на скрине без серой дыры. Дальше 1.2 болванки на стенах. Slow-mo / оружие / HUD не начинать, пока фаза 1 не закрыта сверкой скринов.
+Сейчас фаза 1 (картинка Intro 1:1). 1.1 небо и 1.2 коллизия-не-в-кадре отмечены. Следующий пункт — 1.3 (текстуры объектов, не болванки). Фаза не закрыта сверкой скринов. Slow-mo / оружие / HUD не начинать.
 
-Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре. World00p индексы как в файле (совпадают с vertex normal); не менять i1/i2 — иначе кулится пол двора. G-buffer мира: CullMode::NONE, потому что цоколь Intro (Concrete_Wall / Brick_Red под black.Mat00) смотрит внутрь здания; BACK cull давал щель с небом под домом.
+Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре. WorldModel в кадр только если его нет в запечённом меше: `world_model_in_frame` + `BakedOverlapIndex` (ячейка 16 см, порог доли 0.6). Не рисуем болванкой: PhysicsBSP, Visible=0, StartHidden, небо, Translucent (альфа — 1.5), `*shadow*` (пятно машины). Машины/двери/пропы остаются. World00p индексы как в файле (совпадают с vertex normal); не менять i1/i2 — иначе кулится пол двора. G-buffer мира: CullMode::NONE, потому что цоколь Intro (Concrete_Wall / Brick_Red под black.Mat00) смотрит внутрь здания; BACK cull давал щель с небом под домом.
 
 ## Workspace crates
 

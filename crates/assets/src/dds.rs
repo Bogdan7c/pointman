@@ -102,8 +102,11 @@ impl DdsImage {
         if header.is_cubemap {
             return Err(AssetError::Invalid("DDS cubemap"));
         }
-        let expected = mip_chain_bytes(header.width, header.height, header.mip_count, header.format);
-        let payload = bytes.get(HEADER_SIZE..).ok_or(AssetError::Truncated("DDS payload"))?;
+        let expected =
+            mip_chain_bytes(header.width, header.height, header.mip_count, header.format);
+        let payload = bytes
+            .get(HEADER_SIZE..)
+            .ok_or(AssetError::Truncated("DDS payload"))?;
         if payload.len() < expected {
             return Err(AssetError::Truncated("DDS payload"));
         }
@@ -146,7 +149,9 @@ impl DdsCubemap {
         }
         let face = mip_chain_bytes(header.width, header.height, header.mip_count, header.format);
         let expected = face * CUBEMAP_FACES;
-        let payload = bytes.get(HEADER_SIZE..).ok_or(AssetError::Truncated("DDS cubemap"))?;
+        let payload = bytes
+            .get(HEADER_SIZE..)
+            .ok_or(AssetError::Truncated("DDS cubemap"))?;
         if payload.len() < expected {
             return Err(AssetError::Truncated("DDS cubemap"));
         }

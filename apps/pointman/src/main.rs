@@ -5,13 +5,13 @@ use anyhow::Context;
 use gamepad::Devices;
 use glam::{Mat4, Vec2};
 use pointman_assets::{
-    archive_key, material_key, DdsFormat, DdsImage, Material, WorldBsp, WorldModels, WorldObjects,
-    WorldRender,
+    archive_key, material_key, world_model_in_frame, BakedOverlapIndex, DdsFormat, DdsImage,
+    Material, WorldBsp, WorldModels, WorldObjects, WorldRender,
 };
 use pointman_engine::{LevelDraw, LevelLight, LevelProp, Simulation};
 use pointman_game::{AssetIndex, Config, GameMount, INTRO_WORLD};
 use pointman_render::{tbn_from_normal, Renderer, TextureFormat, TextureId, TextureUpload, Vertex};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{DeviceEvent, ElementState, MouseButton, WindowEvent};
@@ -177,171 +177,173 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
     match mount.read_file(INTRO_WORLD) {
         Ok(bytes) => match WorldRender::parse(&bytes) {
             Ok(world) => {
-            let (verts, indices, draws) = world.flatten();
-            log::info!(
-                "{INTRO_WORLD}: {} surfaces, {} verts, {} indices, bounds {:?} → {:?}",
-                world.surfaces.len(),
-                verts.len(),
-                indices.len(),
-                world.header.min,
-                world.header.max
-            );
-            let gpu: Vec<Vertex> = verts
-                .iter()
-                .map(|v| Vertex {
-                    pos: v.position,
-                    normal: v.normal,
-                    uv: v.uv,
-                    tangent: v.tangent,
-                    binormal: v.binormal,
-                })
-                .collect();
-            match renderer.upload_mesh(&gpu, &indices) {
-                Ok(mesh) => {
-                    let mut index = mount.index();
-                    let mut dds_cache = HashMap::new();
-                    let mut mat_cache = HashMap::new();
-                    let mut textured = 0u32;
-                    let mut fallback = 0u32;
-                    let mut sky = None;
-                    let mut sky_surfaces = 0u32;
-                    let mut level_draws = Vec::with_capacity(draws.len());
-                    for draw in draws {
-                        if sky::is_skybox_material(&mut index, &draw.material) {
-                            if sky.is_none() {
-                                let mat_path = if sky::looks_like_sky_surface(&draw.material)
-                                    && !draw.material.contains('/')
-                                    && !draw.material.contains('\\')
-                                {
-                                    sky::INTRO_SKY_MAT
-                                } else {
-                                    draw.material.as_str()
-                                };
-                                match sky::load_sky_cubemap(&mut index, renderer, mat_path) {
-                                    Ok(id) => sky = Some(id),
-                                    Err(err) => log::warn!("sky {}: {err}", draw.material),
+                let (verts, indices, draws) = world.flatten();
+                log::info!(
+                    "{INTRO_WORLD}: {} surfaces, {} verts, {} indices, bounds {:?} → {:?}",
+                    world.surfaces.len(),
+                    verts.len(),
+                    indices.len(),
+                    world.header.min,
+                    world.header.max
+                );
+                let gpu: Vec<Vertex> = verts
+                    .iter()
+                    .map(|v| Vertex {
+                        pos: v.position,
+                        normal: v.normal,
+                        uv: v.uv,
+                        tangent: v.tangent,
+                        binormal: v.binormal,
+                    })
+                    .collect();
+                match renderer.upload_mesh(&gpu, &indices) {
+                    Ok(mesh) => {
+                        let mut index = mount.index();
+                        let mut dds_cache = HashMap::new();
+                        let mut mat_cache = HashMap::new();
+                        let mut textured = 0u32;
+                        let mut fallback = 0u32;
+                        let mut sky = None;
+                        let mut sky_surfaces = 0u32;
+                        let mut level_draws = Vec::with_capacity(draws.len());
+                        for draw in draws {
+                            if sky::is_skybox_material(&mut index, &draw.material) {
+                                if sky.is_none() {
+                                    let mat_path = if sky::looks_like_sky_surface(&draw.material)
+                                        && !draw.material.contains('/')
+                                        && !draw.material.contains('\\')
+                                    {
+                                        sky::INTRO_SKY_MAT
+                                    } else {
+                                        draw.material.as_str()
+                                    };
+                                    match sky::load_sky_cubemap(&mut index, renderer, mat_path) {
+                                        Ok(id) => sky = Some(id),
+                                        Err(err) => log::warn!("sky {}: {err}", draw.material),
+                                    }
                                 }
+                                sky_surfaces += 1;
+                                continue;
                             }
-                            sky_surfaces += 1;
-                            continue;
-                        }
-                        let maps = maps_for(
-                            &mut index,
-                            renderer,
-                            &mut mat_cache,
-                            &mut dds_cache,
-                            &draw.material,
-                        );
-                        if maps.albedo == TextureId::WHITE {
-                            fallback += 1;
-                        } else {
-                            textured += 1;
-                        }
-                        level_draws.push(LevelDraw {
-                            first_index: draw.first_index,
-                            index_count: draw.index_count,
-                            color: if maps.albedo == TextureId::WHITE {
-                                draw.color
+                            let maps = maps_for(
+                                &mut index,
+                                renderer,
+                                &mut mat_cache,
+                                &mut dds_cache,
+                                &draw.material,
+                            );
+                            if maps.albedo == TextureId::WHITE {
+                                fallback += 1;
                             } else {
-                                [1.0, 1.0, 1.0, 1.0]
-                            },
-                            albedo: maps.albedo,
-                            normal: maps.normal,
-                            spec: maps.spec,
-                            spec_power: maps.spec_power,
-                        });
-                    }
-                    log::info!(
+                                textured += 1;
+                            }
+                            level_draws.push(LevelDraw {
+                                first_index: draw.first_index,
+                                index_count: draw.index_count,
+                                color: if maps.albedo == TextureId::WHITE {
+                                    draw.color
+                                } else {
+                                    [1.0, 1.0, 1.0, 1.0]
+                                },
+                                albedo: maps.albedo,
+                                normal: maps.normal,
+                                spec: maps.spec,
+                                spec_power: maps.spec_power,
+                            });
+                        }
+                        log::info!(
                         "intro textures: {} unique dds, {} surfaces textured, {} fallback, {} skybox skipped",
                         dds_cache.len(),
                         textured,
                         fallback,
                         sky_surfaces
                     );
-                    let objects = WorldObjects::parse(&bytes).unwrap_or_else(|err| {
-                        log::error!("world objects: {err}");
-                        WorldObjects::default()
-                    });
-                    if let Some(start) = objects.spawn() {
-                        log::info!(
-                            "GameStartPoint {}  {:?}  yaw {:.1}°  lights {}  ambient {:?}",
-                            start.name,
-                            start.pos,
-                            start.yaw.to_degrees(),
-                            objects.lights.len(),
-                            objects.ambient
-                        );
-                    }
-                    if let Some(sky) = &objects.sky {
-                        log::info!(
-                            "SkyPointer {} objects  camera {:?}",
-                            sky.object_names.join(", "),
-                            sky.camera_pos
-                        );
-                    }
-                    let triangles = WorldModels::parse(&bytes)
-                        .map(|models| {
-                            if let Some(bsp) = models.physics() {
-                                log::info!(
-                                    "PhysicsBSP {}  points {}  polys {}",
-                                    bsp.names.join(","),
-                                    bsp.points.len(),
-                                    bsp.polygons.len()
-                                );
-                            }
-                            let props = upload_world_models(renderer, &models, &objects);
-                            log::info!(
-                                "world models: {} bsp, {} instances",
-                                models.models.len(),
-                                props.len()
-                            );
-                            (models.triangles(), props)
-                        })
-                        .unwrap_or_else(|err| {
-                            log::error!("PhysicsBSP: {err}");
-                            (Vec::new(), Vec::new())
+                        let objects = WorldObjects::parse(&bytes).unwrap_or_else(|err| {
+                            log::error!("world objects: {err}");
+                            WorldObjects::default()
                         });
-                    let (triangles, props) = triangles;
-                    sim.set_level(
-                        mesh,
-                        level_draws,
-                        world.header.min,
-                        world.header.max,
-                        objects.spawn().map(|s| s.pos),
-                        objects.spawn().map(|s| s.yaw),
-                        triangles,
-                        objects
-                            .lights
-                            .iter()
-                            .map(|light| LevelLight {
-                                position: light.position,
-                                radius: light.radius,
-                                color: light.color,
-                            })
-                            .collect(),
-                        objects.ambient,
-                        props,
-                    );
-                    if sky.is_none() && objects.sky.is_some() {
-                        match sky::load_sky_cubemap(&mut index, renderer, sky::INTRO_SKY_MAT) {
-                            Ok(id) => {
+                        if let Some(start) = objects.spawn() {
+                            log::info!(
+                                "GameStartPoint {}  {:?}  yaw {:.1}°  lights {}  ambient {:?}",
+                                start.name,
+                                start.pos,
+                                start.yaw.to_degrees(),
+                                objects.lights.len(),
+                                objects.ambient
+                            );
+                        }
+                        if let Some(sky) = &objects.sky {
+                            log::info!(
+                                "SkyPointer {} objects  camera {:?}",
+                                sky.object_names.join(", "),
+                                sky.camera_pos
+                            );
+                        }
+                        let triangles = WorldModels::parse(&bytes)
+                            .map(|models| {
+                                if let Some(bsp) = models.physics() {
+                                    log::info!(
+                                        "PhysicsBSP {}  points {}  polys {}",
+                                        bsp.names.join(","),
+                                        bsp.points.len(),
+                                        bsp.polygons.len()
+                                    );
+                                }
+                                let baked = BakedOverlapIndex::from_render(&world);
+                                let props =
+                                    upload_world_models(renderer, &models, &objects, &baked);
                                 log::info!(
-                                    "sky cubemap from SkyPointer fallback {}",
-                                    sky::INTRO_SKY_MAT
+                                    "world models: {} bsp, {} instances",
+                                    models.models.len(),
+                                    props.len()
                                 );
-                                sky = Some(id);
+                                (models.triangles(), props)
+                            })
+                            .unwrap_or_else(|err| {
+                                log::error!("PhysicsBSP: {err}");
+                                (Vec::new(), Vec::new())
+                            });
+                        let (triangles, props) = triangles;
+                        sim.set_level(
+                            mesh,
+                            level_draws,
+                            world.header.min,
+                            world.header.max,
+                            objects.spawn().map(|s| s.pos),
+                            objects.spawn().map(|s| s.yaw),
+                            triangles,
+                            objects
+                                .lights
+                                .iter()
+                                .map(|light| LevelLight {
+                                    position: light.position,
+                                    radius: light.radius,
+                                    color: light.color,
+                                })
+                                .collect(),
+                            objects.ambient,
+                            props,
+                        );
+                        if sky.is_none() && objects.sky.is_some() {
+                            match sky::load_sky_cubemap(&mut index, renderer, sky::INTRO_SKY_MAT) {
+                                Ok(id) => {
+                                    log::info!(
+                                        "sky cubemap from SkyPointer fallback {}",
+                                        sky::INTRO_SKY_MAT
+                                    );
+                                    sky = Some(id);
+                                }
+                                Err(err) => log::warn!("sky fallback: {err}"),
                             }
-                            Err(err) => log::warn!("sky fallback: {err}"),
+                        }
+                        if let Some(sky) = sky {
+                            sim.set_sky(Some(sky));
+                        } else if objects.sky.is_some() {
+                            log::warn!("SkyPointer есть, cubemap не загрузился");
                         }
                     }
-                    if let Some(sky) = sky {
-                        sim.set_sky(Some(sky));
-                    } else if objects.sky.is_some() {
-                        log::warn!("SkyPointer есть, cubemap не загрузился");
-                    }
+                    Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
                 }
-                Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
-            }
             }
             Err(err) => log::error!("parse {INTRO_WORLD}: {err}"),
         },
@@ -359,10 +361,11 @@ fn maps_for(
     if let Some(maps) = mat_cache.get(material) {
         return *maps;
     }
-    let maps = load_maps(index, renderer, dds_cache, &material_key(material)).unwrap_or_else(|err| {
-        log::warn!("material {material}: {err}");
-        MaterialMaps::fallback()
-    });
+    let maps =
+        load_maps(index, renderer, dds_cache, &material_key(material)).unwrap_or_else(|err| {
+            log::warn!("material {material}: {err}");
+            MaterialMaps::fallback()
+        });
     mat_cache.insert(material.to_string(), maps);
     maps
 }
@@ -438,14 +441,34 @@ fn load_slot(
     })
 }
 
+/// GPU-меши только тех WorldModel, которые реально попадут в кадр (не коллизия стен).
 fn upload_world_models(
     renderer: &mut Renderer,
     models: &WorldModels,
     objects: &WorldObjects,
+    baked: &BakedOverlapIndex,
 ) -> Vec<LevelProp> {
+    let mut draw_names = HashSet::new();
+    for place in &objects.models {
+        if world_model_in_frame(
+            place,
+            models.mesh_named(&place.name),
+            objects.sky.as_ref(),
+            baked,
+        ) {
+            draw_names.insert(place.name.to_ascii_lowercase());
+        }
+    }
     let mut gpu = HashMap::new();
     for bsp in &models.models {
         if bsp.is_physics() {
+            continue;
+        }
+        let used = bsp
+            .names
+            .iter()
+            .any(|name| draw_names.contains(&name.to_ascii_lowercase()));
+        if !used {
             continue;
         }
         let Some((verts, indices)) = bsp_mesh(bsp) else {
@@ -462,14 +485,7 @@ fn upload_world_models(
     }
     let mut props = Vec::new();
     for place in &objects.models {
-        if place.hidden {
-            continue;
-        }
-        if objects
-            .sky
-            .as_ref()
-            .is_some_and(|sky| sky.contains_model(&place.name))
-        {
+        if !draw_names.contains(&place.name.to_ascii_lowercase()) {
             continue;
         }
         let Some(&mesh) = gpu.get(&place.name.to_ascii_lowercase()) else {
@@ -510,9 +526,9 @@ fn bsp_mesh(bsp: &WorldBsp) -> Option<(Vec<Vertex>, Vec<u32>)> {
 }
 
 fn name_color(name: &str) -> [f32; 4] {
-    let h = name
-        .bytes()
-        .fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ u32::from(b));
+    let h = name.bytes().fold(2166136261u32, |a, b| {
+        a.wrapping_mul(16777619) ^ u32::from(b)
+    });
     [
         0.18 + ((h & 0xFF) as f32 / 255.0) * 0.45,
         0.16 + (((h >> 8) & 0xFF) as f32 / 255.0) * 0.40,

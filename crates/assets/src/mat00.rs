@@ -163,7 +163,10 @@ mod tests {
         write_lt(&mut bytes, r"Textures\Office\Floor.dds");
         let mat = Material::parse(&bytes).unwrap();
         assert_eq!(mat.diffuse_map(), Some(r"Textures\Office\Floor.dds"));
-        assert_eq!(mat.string_def("TDIFFUSEMAP"), Some(r"Textures\Office\Floor.dds"));
+        assert_eq!(
+            mat.string_def("TDIFFUSEMAP"),
+            Some(r"Textures\Office\Floor.dds")
+        );
     }
 
     #[test]

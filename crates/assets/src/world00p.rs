@@ -290,7 +290,9 @@ fn decode_surface_vertices(
     let mut out = Vec::with_capacity(raw.vertices_count as usize);
     for i in 0..raw.vertices_count as usize {
         let off = start + i * stride;
-        let end = off.checked_add(stride).ok_or(AssetError::Truncated("vertex"))?;
+        let end = off
+            .checked_add(stride)
+            .ok_or(AssetError::Truncated("vertex"))?;
         if end > blob.len() {
             return Err(AssetError::Truncated("vertex block"));
         }
@@ -316,7 +318,11 @@ fn decode_vertex(bytes: &[u8], def: &[VertexProp]) -> Result<WorldVertex, AssetE
             _ => return Err(AssetError::Invalid("vertex format")),
         };
         let off = usize::from(prop.offset);
-        if off.checked_add(size).map(|end| end > bytes.len()).unwrap_or(true) {
+        if off
+            .checked_add(size)
+            .map(|end| end > bytes.len())
+            .unwrap_or(true)
+        {
             continue;
         }
         let slice = &bytes[off..off + size];
@@ -392,7 +398,9 @@ fn decode_surface_indices(
 }
 
 fn material_color(name: &str) -> [f32; 4] {
-    let h = name.bytes().fold(2166136261u32, |a, b| a.wrapping_mul(16777619) ^ u32::from(b));
+    let h = name.bytes().fold(2166136261u32, |a, b| {
+        a.wrapping_mul(16777619) ^ u32::from(b)
+    });
     let r = 0.12 + ((h & 0xFF) as f32 / 255.0) * 0.28;
     let g = 0.11 + (((h >> 8) & 0xFF) as f32 / 255.0) * 0.22;
     let b = 0.10 + (((h >> 16) & 0xFF) as f32 / 255.0) * 0.20;
@@ -531,9 +539,8 @@ mod tests {
     #[test]
     fn intro_courtyard_floor_winding_matches_normals_if_extracted() {
         // Розничный Intro — не CI. Есть файл → пол двора должен смотреть вверх, не в землю.
-        let path = std::env::var("POINTMAN_INTRO_WORLD00P").unwrap_or_else(|_| {
-            "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into()
-        });
+        let path = std::env::var("POINTMAN_INTRO_WORLD00P")
+            .unwrap_or_else(|_| "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into());
         let Ok(bytes) = std::fs::read(&path) else {
             return;
         };
@@ -563,9 +570,8 @@ mod tests {
     #[test]
     fn intro_courtyard_skirt_faces_inward_if_extracted() {
         // Розничный Intro: цоколь дома из переулка — задняя грань. BACK cull = небо в щели.
-        let path = std::env::var("POINTMAN_INTRO_WORLD00P").unwrap_or_else(|_| {
-            "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into()
-        });
+        let path = std::env::var("POINTMAN_INTRO_WORLD00P")
+            .unwrap_or_else(|_| "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into());
         let Ok(bytes) = std::fs::read(&path) else {
             return;
         };
@@ -579,7 +585,10 @@ mod tests {
             ground.material
         );
         assert!(
-            ground.material.to_ascii_lowercase().contains("concrete_wall"),
+            ground
+                .material
+                .to_ascii_lowercase()
+                .contains("concrete_wall"),
             "ожидали Concrete_Wall, получили {}",
             ground.material
         );
@@ -608,8 +617,7 @@ mod tests {
         let mut best: Option<Hit> = None;
         for surf in &world.surfaces {
             let name = surf.material.to_ascii_lowercase();
-            if name.contains("sky_day") || name.contains("skybox") || name.contains("cloudplane")
-            {
+            if name.contains("sky_day") || name.contains("skybox") || name.contains("cloudplane") {
                 continue;
             }
             for tri in surf.indices.chunks_exact(3) {

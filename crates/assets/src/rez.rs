@@ -173,10 +173,10 @@ mod tests {
         dir.extend_from_slice(&(payload.len() as u32).to_le_bytes());
         dir.extend_from_slice(&0u32.to_le_bytes()); // time
         dir.extend_from_slice(&1u32.to_le_bytes()); // id
-        dir.extend_from_slice(b"txtd"); // reversed "dtx" plus leftover — actually 4 bytes "txt\0" reversed is "txt\0"? 
-        // "txt" reversed into 4 bytes: store as b"txt\0" then we reverse non-null → "txt". Wait our reader reverses.
-        // Store reversed: "txt" → write 't','x','t',0 then reverse filter → t,x,t reversed = t,x,t. Hmm.
-        // Reader: take 4 bytes, filter zeros, reverse. So to get "dtx" we store "xtd\0".
+        dir.extend_from_slice(b"txtd"); // reversed "dtx" plus leftover — actually 4 bytes "txt\0" reversed is "txt\0"?
+                                        // "txt" reversed into 4 bytes: store as b"txt\0" then we reverse non-null → "txt". Wait our reader reverses.
+                                        // Store reversed: "txt" → write 't','x','t',0 then reverse filter → t,x,t reversed = t,x,t. Hmm.
+                                        // Reader: take 4 bytes, filter zeros, reverse. So to get "dtx" we store "xtd\0".
         dir.truncate(dir.len() - 4);
         dir.extend_from_slice(b"xtd\0");
         dir.extend_from_slice(&0u32.to_le_bytes());

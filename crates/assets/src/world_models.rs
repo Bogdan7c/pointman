@@ -105,11 +105,9 @@ impl WorldModels {
     }
 
     pub fn mesh_named(&self, name: &str) -> Option<&WorldBsp> {
-        self.models.iter().find(|bsp| {
-            bsp.names
-                .iter()
-                .any(|n| n.eq_ignore_ascii_case(name))
-        })
+        self.models
+            .iter()
+            .find(|bsp| bsp.names.iter().any(|n| n.eq_ignore_ascii_case(name)))
     }
 }
 

@@ -49,6 +49,10 @@ pub struct WorldModelPlacement {
     pub pos: Vec3,
     pub rotation: Quat,
     pub hidden: bool,
+    /// Свойство Visible. 0 — объект есть для скриптов/коллизии, в кадре его нет.
+    pub visible: bool,
+    /// Свойство Translucent. Непрозрачная болванка стекла — серая стена; альфа в 1.5.
+    pub translucent: bool,
 }
 
 /// Небо уровня: камера неба + имена объектов из SkyPointer (куб, облака, FX).
@@ -185,6 +189,8 @@ fn world_model_placement(bag: &PropertyBag) -> Option<WorldModelPlacement> {
         pos,
         rotation: Quat::from_xyzw(q[0], q[1], q[2], q[3]),
         hidden: bag.int("StartHidden").unwrap_or(0) != 0,
+        visible: bag.int("Visible").unwrap_or(1) != 0,
+        translucent: bag.int("Translucent").unwrap_or(0) != 0,
     })
 }
 
@@ -318,7 +324,9 @@ fn cstring(heap: &[u8], off: usize) -> Option<String> {
         .position(|&b| b == 0)
         .map(|p| off + p)
         .unwrap_or(heap.len());
-    std::str::from_utf8(&heap[off..end]).ok().map(|s| s.to_string())
+    std::str::from_utf8(&heap[off..end])
+        .ok()
+        .map(|s| s.to_string())
 }
 
 fn vec3_at(heap: &[u8], off: usize) -> Option<Vec3> {
@@ -372,6 +380,8 @@ mod tests {
         assert_eq!(objects.models[0].name, "Crate00");
         assert_eq!(objects.models[0].pos, Vec3::new(10.0, 20.0, 30.0));
         assert!(!objects.models[0].hidden);
+        assert!(objects.models[0].visible);
+        assert!(!objects.models[0].translucent);
     }
 
     #[test]
@@ -385,6 +395,22 @@ mod tests {
         world.extend_from_slice(&section);
         let objects = WorldObjects::parse(&world).unwrap();
         assert!(objects.models[0].hidden);
+        assert!(objects.models[0].visible);
+    }
+
+    #[test]
+    fn invisible_and_translucent_worldmodel_flags() {
+        let mut world = vec![0u8; 56];
+        world[0..4].copy_from_slice(&FEAR_WORLD_VERSION.to_le_bytes());
+        world[12..16].copy_from_slice(&56u32.to_le_bytes());
+        let mut section = Vec::new();
+        section.extend_from_slice(&1u32.to_le_bytes());
+        write_world_model_flags(&mut section, "Glass00", false, false, true);
+        world.extend_from_slice(&section);
+        let objects = WorldObjects::parse(&world).unwrap();
+        assert!(!objects.models[0].visible);
+        assert!(objects.models[0].translucent);
+        assert!(!objects.models[0].hidden);
     }
 
     #[test]
@@ -408,11 +434,7 @@ mod tests {
         let mut section = Vec::new();
         section.extend_from_slice(&3u32.to_le_bytes());
         write_sky_camera(&mut section, [-2500.0, -1036.0, -3220.0]);
-        write_sky_pointer(
-            &mut section,
-            "Sky_Japan00.SkyCube",
-            "Sky_Japan00.Clouds",
-        );
+        write_sky_pointer(&mut section, "Sky_Japan00.SkyCube", "Sky_Japan00.Clouds");
         write_world_model(&mut section, "Sky_Japan00.SkyCube", false);
         world.extend_from_slice(&section);
 
@@ -514,6 +536,16 @@ mod tests {
     }
 
     fn write_world_model(buf: &mut Vec<u8>, name: &str, hidden: bool) {
+        write_world_model_flags(buf, name, hidden, true, false);
+    }
+
+    fn write_world_model_flags(
+        buf: &mut Vec<u8>,
+        name: &str,
+        hidden: bool,
+        visible: bool,
+        translucent: bool,
+    ) {
         write_lt(buf, "WorldModel");
         let mut heap = Vec::new();
         let name_key = push_cstr(&mut heap, "Name");
@@ -525,13 +557,17 @@ mod tests {
         let rot_val = heap.len();
         write_f32s(&mut heap, &[0.0, 0.0, 0.0, 1.0]);
         let hide_key = push_cstr(&mut heap, "StartHidden");
-        buf.extend_from_slice(&4u32.to_le_bytes());
+        let vis_key = push_cstr(&mut heap, "Visible");
+        let glass_key = push_cstr(&mut heap, "Translucent");
+        buf.extend_from_slice(&6u32.to_le_bytes());
         buf.extend_from_slice(&(heap.len() as u32).to_le_bytes());
         buf.extend_from_slice(&heap);
         write_prop(buf, name_key, PROP_STRING, name_val as u32);
         write_prop(buf, pos_key, PROP_VECTOR, pos_val as u32);
         write_prop(buf, rot_key, PROP_QUAT, rot_val as u32);
         write_prop(buf, hide_key, PROP_INT, if hidden { 1 } else { 0 });
+        write_prop(buf, vis_key, PROP_INT, if visible { 1 } else { 0 });
+        write_prop(buf, glass_key, PROP_INT, if translucent { 1 } else { 0 });
     }
 
     fn write_lt(buf: &mut Vec<u8>, s: &str) {
