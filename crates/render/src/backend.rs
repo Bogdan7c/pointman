@@ -1446,8 +1446,10 @@ fn create_gbuffer_pipeline(
     let viewport = vk::PipelineViewportStateCreateInfo::default()
         .viewport_count(1)
         .scissor_count(1);
+    // Intro: часть фасадов двора (Concrete_Wall / Brick_Red под black.Mat00) смотрит
+    // внутрь здания. BACK cull оставлял щель, и lighting pass рисовал небо «под домом».
     let raster = vk::PipelineRasterizationStateCreateInfo::default()
-        .cull_mode(vk::CullModeFlags::BACK)
+        .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
         .polygon_mode(vk::PolygonMode::FILL)
         .line_width(1.0);

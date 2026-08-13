@@ -10,7 +10,7 @@
 
 Сейчас фаза 1 (картинка Intro 1:1). Код 1.1 (SkyPointer/SkyCamera, `DdsCubemap`, lighting cubemap) есть; фаза не закрыта, пока двор на скрине без серой дыры. Дальше 1.2 болванки на стенах. Slow-mo / оружие / HUD не начинать, пока фаза 1 не закрыта сверкой скринов.
 
-Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре. World00p индексы как в файле (совпадают с vertex normal); не менять i1/i2 — иначе gbuffer BACK+CCW кулит пол двора и небо лезет «сквозь землю».
+Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре. World00p индексы как в файле (совпадают с vertex normal); не менять i1/i2 — иначе кулится пол двора. G-buffer мира: CullMode::NONE, потому что цоколь Intro (Concrete_Wall / Brick_Red под black.Mat00) смотрит внутрь здания; BACK cull давал щель с небом под домом.
 
 ## Workspace crates
 

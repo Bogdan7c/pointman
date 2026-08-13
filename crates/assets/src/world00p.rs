@@ -560,6 +560,100 @@ mod tests {
         );
     }
 
+    #[test]
+    fn intro_courtyard_skirt_faces_inward_if_extracted() {
+        // Розничный Intro: цоколь дома из переулка — задняя грань. BACK cull = небо в щели.
+        let path = std::env::var("POINTMAN_INTRO_WORLD00P").unwrap_or_else(|_| {
+            "/tmp/pointman-sky/Worlds/Release/Intro.World00p".into()
+        });
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let world = WorldRender::parse(&bytes).unwrap();
+        let eye = Vec3::new(-900.0, -1366.0, -370.0);
+        let ground = first_non_sky_hit(&world, eye, Vec3::new(-715.0, -1520.0, -370.0))
+            .expect("цоколь двора должен быть в меше");
+        assert!(
+            !ground.front,
+            "цоколь {} должен смотреть внутрь (задняя грань с улицы)",
+            ground.material
+        );
+        assert!(
+            ground.material.to_ascii_lowercase().contains("concrete_wall"),
+            "ожидали Concrete_Wall, получили {}",
+            ground.material
+        );
+        let gap = first_non_sky_hit(&world, eye, Vec3::new(-715.0, -1200.0, -420.0))
+            .expect("кирпич под black.Mat00 должен быть в меше");
+        assert!(
+            !gap.front,
+            "фасад {} должен смотреть внутрь, иначе щель не от cull",
+            gap.material
+        );
+        assert!(
+            gap.material.to_ascii_lowercase().contains("brick_red"),
+            "ожидали Brick_Red, получили {}",
+            gap.material
+        );
+    }
+
+    struct Hit {
+        material: String,
+        front: bool,
+    }
+
+    fn first_non_sky_hit(world: &WorldRender, eye: Vec3, dest: Vec3) -> Option<Hit> {
+        let dir = (dest - eye).normalize();
+        let mut best_t = f32::MAX;
+        let mut best: Option<Hit> = None;
+        for surf in &world.surfaces {
+            let name = surf.material.to_ascii_lowercase();
+            if name.contains("sky_day") || name.contains("skybox") || name.contains("cloudplane")
+            {
+                continue;
+            }
+            for tri in surf.indices.chunks_exact(3) {
+                let a = Vec3::from_array(surf.vertices[tri[0] as usize].position);
+                let b = Vec3::from_array(surf.vertices[tri[1] as usize].position);
+                let c = Vec3::from_array(surf.vertices[tri[2] as usize].position);
+                if let Some((t, front)) = ray_tri_cull(eye, dir, a, b, c) {
+                    if t < best_t {
+                        best_t = t;
+                        best = Some(Hit {
+                            material: surf.material.clone(),
+                            front,
+                        });
+                    }
+                }
+            }
+        }
+        best
+    }
+
+    /// `front == true` — нормаль смотрит на камеру (Vulkan CCW).
+    fn ray_tri_cull(o: Vec3, d: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<(f32, bool)> {
+        let e1 = b - a;
+        let e2 = c - a;
+        let p = d.cross(e2);
+        let det = e1.dot(p);
+        if det.abs() < 1e-8 {
+            return None;
+        }
+        let inv = 1.0 / det;
+        let tvec = o - a;
+        let u = tvec.dot(p) * inv;
+        if !(0.0..=1.0).contains(&u) {
+            return None;
+        }
+        let q = tvec.cross(e1);
+        let v = d.dot(q) * inv;
+        if v < 0.0 || u + v > 1.0 {
+            return None;
+        }
+        let t = e2.dot(q) * inv;
+        (t > 1.0).then_some((t, det > 0.0))
+    }
+
     fn courtyard_floor_near_spawn(surf: &WorldSurface, spawn: [f32; 3]) -> bool {
         let mut min = [f32::MAX; 3];
         let mut max = [f32::MIN; 3];
