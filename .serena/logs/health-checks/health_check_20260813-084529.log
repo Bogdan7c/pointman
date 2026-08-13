@@ -1,0 +1,76 @@
+INFO  2026-08-13 08:45:29,715 serena.cli:health_check:939 - Starting health check for project: /home/bogdan/projects/pointman
+INFO  2026-08-13 08:45:29,715 serena.cli:health_check:943 - Creating SerenaAgent with disabled dashboard...
+INFO  2026-08-13 08:45:29,716 serena.util.file_system:_load_gitignore_files:152 - Processing .gitignore file: /home/bogdan/projects/pointman/.serena/.gitignore
+INFO  2026-08-13 08:45:29,717 serena.util.file_system:stop:336 - Loading of .gitignore files completed in 0.003 seconds
+INFO  2026-08-13 08:45:29,717 serena.project:stop:336 - Gathering ignore spec for project pointman completed in 0.003 seconds
+INFO  2026-08-13 08:45:29,718 serena.agent:__init__:610 - Will record tool usage statistics with token count estimator: CHAR_COUNT.
+INFO  2026-08-13 08:45:29,719 serena.agent:__init__:614 - Starting Serena server (version=1.5.3, process id=29567, parent process id=29519; language backend=LSP); Python version=3.13.14, platform=Linux-7.1.6-1-cachyos-x86_64-with-glibc2.44
+INFO  2026-08-13 08:45:29,719 serena.agent:__init__:618 - Configuration file: /home/bogdan/.serena/serena_config.yml
+INFO  2026-08-13 08:45:29,719 serena.agent:__init__:619 - Available projects: .codex, Codex, moonlight-android-sbs, pointman, test, videoplayer
+INFO  2026-08-13 08:45:29,719 serena.agent:__init__:620 - Loaded tools (51): create_text_file, replace_content, delete_lines, replace_lines, insert_at_line, replace_symbol_body, insert_after_symbol, insert_before_symbol, read_file, list_dir, find_file, search_for_pattern, restart_language_server, get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol, rename_symbol, safe_delete_symbol, write_memory, read_memory, list_memories, delete_memory, rename_memory, edit_memory, execute_shell_command, open_dashboard, activate_project, remove_project, get_current_config, onboarding, initial_instructions, serena_info, jet_brains_find_symbol, jet_brains_move, jet_brains_safe_delete, jet_brains_inline_symbol, jet_brains_find_referencing_symbols, jet_brains_get_symbols_overview, jet_brains_type_hierarchy, jet_brains_find_declaration, jet_brains_find_implementations, jet_brains_rename, jet_brains_debug, jet_brains_run_inspections, jet_brains_list_inspections, list_queryable_projects, query_project
+INFO  2026-08-13 08:45:29,719 serena.agent:__init__:632 - Using language backend from global configuration: LSP
+INFO  2026-08-13 08:45:29,729 serena.config.serena_config:start:329 - Loading project instance for RegisteredProject[project_root=/home/bogdan/projects/pointman, project_config=ProjectConfig[project_name=pointman]] starting ...
+INFO  2026-08-13 08:45:29,729 serena.project:__init__:43 - Serena project data folder: /home/bogdan/projects/pointman/.serena
+INFO  2026-08-13 08:45:29,729 serena.project:start:329 - Gathering ignore spec for project pointman starting ...
+INFO  2026-08-13 08:45:29,729 serena.config.serena_config:stop:336 - Loading project instance for RegisteredProject[project_root=/home/bogdan/projects/pointman, project_config=ProjectConfig[project_name=pointman]] completed in 0.000 seconds
+INFO  2026-08-13 08:45:29,730 serena.util.file_system:start:329 - Loading of .gitignore files starting ...
+INFO  2026-08-13 08:45:29,730 serena.agent:activate_project_from_path_or_name:1152 - Found registered project 'pointman' at path /home/bogdan/projects/pointman
+INFO  2026-08-13 08:45:29,730 serena.agent:_activate_project:1089 - Activating pointman at /home/bogdan/projects/pointman
+INFO  2026-08-13 08:45:29,730 serena.util.file_system:_load_gitignore_files:152 - Processing .gitignore file: /home/bogdan/projects/pointman/.gitignore
+INFO  2026-08-13 08:45:29,730 serena.task_executor:issue_task:192 - Scheduling Task-1:init_language_server_manager
+INFO  2026-08-13 08:45:29,730 serena.agent:_update_active_modes:1018 - Active modes (2): editing, interactive
+INFO  2026-08-13 08:45:29,731 serena.agent:_create_base_toolset:777 - Number of exposed tools: 28
+INFO  2026-08-13 08:45:29,732 serena.agent:__init__:656 - Number of exposed tools: 28. Exposed tools: ['activate_project', 'create_text_file', 'delete_memory', 'edit_memory', 'execute_shell_command', 'find_declaration', 'find_file', 'find_implementations', 'find_referencing_symbols', 'find_symbol', 'get_current_config', 'get_diagnostics_for_file', 'get_symbols_overview', 'initial_instructions', 'insert_after_symbol', 'insert_before_symbol', 'list_dir', 'list_memories', 'onboarding', 'read_file', 'read_memory', 'rename_memory', 'rename_symbol', 'replace_content', 'replace_symbol_body', 'safe_delete_symbol', 'search_for_pattern', 'write_memory']
+INFO  2026-08-13 08:45:29,733 serena.agent:_update_active_tools:1036 - Active tools (28): activate_project, create_text_file, delete_memory, edit_memory, execute_shell_command, find_declaration, find_file, find_implementations, find_referencing_symbols, find_symbol, get_current_config, get_diagnostics_for_file, get_symbols_overview, initial_instructions, insert_after_symbol, insert_before_symbol, list_dir, list_memories, onboarding, read_file, read_memory, rename_memory, rename_symbol, replace_content, replace_symbol_body, safe_delete_symbol, search_for_pattern, write_memory
+INFO  2026-08-13 08:45:29,733 serena.util.file_system:_load_gitignore_files:152 - Processing .gitignore file: /home/bogdan/projects/pointman/.serena/.gitignore
+INFO  2026-08-13 08:45:29,735 serena.util.file_system:stop:336 - Loading of .gitignore files completed in 0.005 seconds
+INFO  2026-08-13 08:45:29,735 serena.project:stop:336 - Gathering ignore spec for project pointman completed in 0.005 seconds
+INFO  2026-08-13 08:45:29,808 serena.cli:health_check:946 - SerenaAgent created successfully
+INFO  2026-08-13 08:45:29,808 serena.cli:health_check:949 - Searching for analyzable files...
+INFO  2026-08-13 08:45:29,811 serena.cli:health_check:958 - Found analyzable file: crates/assets/src/lib.rs
+INFO  2026-08-13 08:45:29,811 serena.cli:health_check:976 - Testing GetSymbolsOverviewTool on file: crates/assets/src/lib.rs
+INFO  2026-08-13 08:45:29,811 serena.task_executor:issue_task:192 - Scheduling Task-2:<lambda>
+INFO  2026-08-13 08:45:29,819 serena.task_executor:_process_task_queue:123 - Starting execution of Task-1:init_language_server_manager
+INFO  2026-08-13 08:45:29,819 serena.task_executor:start:329 - Task-1:init_language_server_manager starting ...
+INFO  2026-08-13 08:45:29,819 serena.agent:start:329 - Language server initialization starting ...
+INFO  2026-08-13 08:45:29,820 serena.project:create_language_server_manager:420 - Creating language server manager for /home/bogdan/projects/pointman
+INFO  2026-08-13 08:45:29,820 sensai.util.logging:start:329 - Language server startup (language=rust) starting ...
+INFO  2026-08-13 08:45:29,820 serena.ls_manager:create_language_server:50 - Creating language server instance for /home/bogdan/projects/pointman, language=rust.
+INFO  2026-08-13 08:45:29,825 solidlsp.ls:_load_raw_document_symbols_cache:2992 - Loading document symbols cache from /home/bogdan/projects/pointman/.serena/cache/rust/raw_document_symbols.pkl
+INFO  2026-08-13 08:45:29,827 solidlsp.ls:_load_raw_document_symbols_cache:2997 - Loaded 32 entries from raw document symbols cache.
+INFO  2026-08-13 08:45:29,827 solidlsp.ls:_load_document_symbols_cache:3027 - Loading document symbols cache from /home/bogdan/projects/pointman/.serena/cache/rust/document_symbols.pkl
+INFO  2026-08-13 08:45:29,831 solidlsp.ls:_load_document_symbols_cache:3032 - Loaded 32 entries from document symbols cache.
+INFO  2026-08-13 08:45:29,844 solidlsp.ls:start:3123 - Starting language server with language rust for /home/bogdan/projects/pointman
+INFO  2026-08-13 08:45:29,844 solidlsp.language_servers.rust_analyzer:_start_server:729 - Starting RustAnalyzer server process
+INFO  2026-08-13 08:45:29,845 solidlsp.ls_process:_start:468 - Starting language server process via command: ['/home/bogdan/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rust-analyzer']
+INFO  2026-08-13 08:45:29,845 solidlsp.language_servers.rust_analyzer:_start_server:733 - Sending initialize request from LSP client to LSP server and awaiting response
+INFO  2026-08-13 08:45:33,075 sensai.util.logging:stop:336 - Language server startup (language=rust) completed in 3.255 seconds
+INFO  2026-08-13 08:45:33,075 serena.agent:stop:336 - Language server initialization completed in 3.256 seconds
+INFO  2026-08-13 08:45:33,075 serena.task_executor:stop:336 - Task-1:init_language_server_manager completed in 3.256 seconds
+INFO  2026-08-13 08:45:33,075 serena.task_executor:_process_task_queue:123 - Starting execution of Task-2:<lambda>
+INFO  2026-08-13 08:45:33,075 serena.task_executor:start:329 - Task-2:<lambda> starting ...
+INFO  2026-08-13 08:45:33,076 serena.task_executor:stop:336 - Task-2:<lambda> completed in 0.000 seconds
+INFO  2026-08-13 08:45:33,076 serena.cli:health_check:978 - GetSymbolsOverviewTool returned: [{'name': 'arch00', 'kind': 'Module'}, {'name': 'dds', 'kind': 'Module'}, {'name': 'error', 'kind': 'Module'}, {'name': 'extensions', 'kind': 'Module'}, {'name': 'mat00', 'kind': 'Module'}, {'name': 'rez', 'kind': 'Module'}, {'name': 'world00p', 'kind': 'Module'}, {'name': 'world_models', 'kind': 'Module'}, {'name': 'world_objects', 'kind': 'Module'}, {'name': 'archive_key', 'kind': 'Function'}, {'name': 'material_key', 'kind': 'Function'}, {'name': 'GameArchive', 'kind': 'Enum'}, {'name': 'impl GameArchive', 'kind': 'Object'}, {'name': 'read_cstring', 'kind': 'Function'}, {'name': 'read_u32', 'kind': 'Function'}, {'name': 'read_exact_vec', 'kind': 'Function'}, {'name': 'tests', 'kind': 'Module'}]
+INFO  2026-08-13 08:45:33,076 serena.cli:health_check:1001 - Using symbol for testing: archive_key (kind: Function)
+INFO  2026-08-13 08:45:33,076 serena.cli:health_check:1004 - Testing FindSymbolTool for symbol: archive_key
+INFO  2026-08-13 08:45:33,076 serena.task_executor:issue_task:192 - Scheduling Task-3:<lambda>
+INFO  2026-08-13 08:45:33,176 serena.task_executor:_process_task_queue:123 - Starting execution of Task-3:<lambda>
+INFO  2026-08-13 08:45:33,176 serena.task_executor:start:329 - Task-3:<lambda> starting ...
+INFO  2026-08-13 08:45:33,177 serena.task_executor:stop:336 - Task-3:<lambda> completed in 0.001 seconds
+INFO  2026-08-13 08:45:33,177 serena.cli:health_check:1009 - FindSymbolTool found 1 matches for symbol archive_key
+INFO  2026-08-13 08:45:33,177 serena.cli:health_check:1012 - Testing FindReferencingSymbolsTool for symbol: archive_key
+INFO  2026-08-13 08:45:33,177 serena.task_executor:issue_task:192 - Scheduling Task-4:<lambda>
+INFO  2026-08-13 08:45:33,277 serena.task_executor:_process_task_queue:123 - Starting execution of Task-4:<lambda>
+INFO  2026-08-13 08:45:33,277 serena.task_executor:start:329 - Task-4:<lambda> starting ...
+WARNING 2026-08-13 08:45:35,646 solidlsp.ls:request_referencing_symbols:2420 - Could not find containing symbol for apps/pointman/src/main.rs:6:4. Returning file symbol instead
+INFO  2026-08-13 08:45:35,655 serena.task_executor:stop:336 - Task-4:<lambda> completed in 2.378 seconds
+INFO  2026-08-13 08:45:35,655 serena.cli:health_check:1016 - FindReferencingSymbolsTool found 2 references for symbol archive_key
+INFO  2026-08-13 08:45:35,656 serena.cli:health_check:1022 - Testing SearchForPatternTool for pattern: archive_key
+INFO  2026-08-13 08:45:35,656 serena.task_executor:issue_task:192 - Scheduling Task-5:<lambda>
+INFO  2026-08-13 08:45:35,756 serena.task_executor:_process_task_queue:123 - Starting execution of Task-5:<lambda>
+INFO  2026-08-13 08:45:35,756 serena.task_executor:start:329 - Task-5:<lambda> starting ...
+INFO  2026-08-13 08:45:35,758 serena.util.text_utils:search_files:366 - Processing 32 files.
+INFO  2026-08-13 08:45:35,773 serena.util.text_utils:search_files:408 - Found 5 total matches across 32 files
+INFO  2026-08-13 08:45:35,773 serena.task_executor:stop:336 - Task-5:<lambda> completed in 0.017 seconds
+INFO  2026-08-13 08:45:35,773 serena.cli:health_check:1029 - SearchForPatternTool found 5 pattern matches for archive_key
+INFO  2026-08-13 08:45:35,773 serena.cli:health_check:1043 - Health check completed successfully

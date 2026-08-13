@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "/home/bogdan/.local/bin/serena",
+      "args": [
+        "start-mcp-server",
+        "--project=/home/bogdan/projects/pointman",
+        "--context=ide"
+      ]
+    },
+    "kwin-mcp": {
+      "command": "/home/bogdan/.local/bin/kwin-mcp",
+      "args": ["--default-live-session"],
+      "env": {
+        "WAYLAND_DISPLAY": "wayland-0",
+        "XDG_RUNTIME_DIR": "/run/user/1000",
+        "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus"
+      }
+    }
+  }
+}
