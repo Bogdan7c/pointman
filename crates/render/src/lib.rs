@@ -1,6 +1,7 @@
 mod backend;
 mod blinn;
 mod camera;
+mod cubemap;
 mod error;
 mod material;
 mod mesh;
@@ -9,6 +10,7 @@ mod texture;
 pub use backend::Renderer;
 pub use blinn::{bgra_to_tangent, blinn_specular, tangent_to_world};
 pub use camera::Camera;
+pub use cubemap::{CubemapId, CubemapUpload};
 pub use error::RenderError;
 pub use mesh::{corridor_boxes, cube, tbn_from_normal, Vertex};
 pub use texture::{TextureFormat, TextureId, TextureUpload};
@@ -82,4 +84,6 @@ pub struct DrawList {
     pub instances: Vec<MeshInstance>,
     pub lights: Vec<PointLight>,
     pub ambient: Vec3,
+    /// Cubemap неба. `None` — пустые пиксели остаются dim ambient, как раньше.
+    pub sky: Option<CubemapId>,
 }

@@ -69,6 +69,17 @@ impl Material {
         self.string_def("tSpecularMap")
     }
 
+    /// Путь шейдера первого FX. Нужен, чтобы отличить skybox от обычной стены.
+    pub fn shader(&self) -> Option<&str> {
+        self.fx.first().map(|layer| layer.shader.as_str())
+    }
+
+    /// `skybox.fx` семплит cubemap через нормаль куба, это не плоская стена.
+    pub fn is_skybox(&self) -> bool {
+        self.shader()
+            .is_some_and(|shader| shader.to_ascii_lowercase().contains("skybox"))
+    }
+
     pub fn float_def(&self, name: &str) -> Option<f32> {
         for layer in &self.fx {
             for (key, value) in &layer.defs {
@@ -178,6 +189,25 @@ mod tests {
         assert_eq!(mat.normal_map(), Some(r"Tex\Office\Floor_N.dds"));
         assert_eq!(mat.specular_map(), Some(r"Tex\Office\Floor_S.dds"));
         assert_eq!(mat.max_specular_power(), 64.0);
+        assert!(!mat.is_skybox());
+    }
+
+    #[test]
+    fn skybox_shader_is_not_a_wall() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"LTMI");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, r"shaders\rigid\Solid\skybox.fx");
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        bytes.extend_from_slice(&1u32.to_le_bytes());
+        write_lt(&mut bytes, "tDiffuseMap");
+        write_lt(&mut bytes, r"Prefabs\Systemic\Sky\Sky_Day_C.dds");
+        let mat = Material::parse(&bytes).unwrap();
+        assert!(mat.is_skybox());
+        assert_eq!(
+            mat.diffuse_map(),
+            Some(r"Prefabs\Systemic\Sky\Sky_Day_C.dds")
+        );
     }
 
     fn write_lt(buf: &mut Vec<u8>, s: &str) {

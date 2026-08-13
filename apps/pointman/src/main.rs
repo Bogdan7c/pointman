@@ -1,4 +1,5 @@
 mod gamepad;
+mod sky;
 
 use anyhow::Context;
 use gamepad::Devices;
@@ -202,8 +203,28 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                     let mut mat_cache = HashMap::new();
                     let mut textured = 0u32;
                     let mut fallback = 0u32;
+                    let mut sky = None;
+                    let mut sky_surfaces = 0u32;
                     let mut level_draws = Vec::with_capacity(draws.len());
                     for draw in draws {
+                        if sky::is_skybox_material(&mut index, &draw.material) {
+                            if sky.is_none() {
+                                let mat_path = if sky::looks_like_sky_surface(&draw.material)
+                                    && !draw.material.contains('/')
+                                    && !draw.material.contains('\\')
+                                {
+                                    sky::INTRO_SKY_MAT
+                                } else {
+                                    draw.material.as_str()
+                                };
+                                match sky::load_sky_cubemap(&mut index, renderer, mat_path) {
+                                    Ok(id) => sky = Some(id),
+                                    Err(err) => log::warn!("sky {}: {err}", draw.material),
+                                }
+                            }
+                            sky_surfaces += 1;
+                            continue;
+                        }
                         let maps = maps_for(
                             &mut index,
                             renderer,
@@ -231,10 +252,11 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         });
                     }
                     log::info!(
-                        "intro textures: {} unique dds, {} surfaces textured, {} fallback",
+                        "intro textures: {} unique dds, {} surfaces textured, {} fallback, {} skybox skipped",
                         dds_cache.len(),
                         textured,
-                        fallback
+                        fallback,
+                        sky_surfaces
                     );
                     let objects = WorldObjects::parse(&bytes).unwrap_or_else(|err| {
                         log::error!("world objects: {err}");
@@ -248,6 +270,13 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                             start.yaw.to_degrees(),
                             objects.lights.len(),
                             objects.ambient
+                        );
+                    }
+                    if let Some(sky) = &objects.sky {
+                        log::info!(
+                            "SkyPointer {} objects  camera {:?}",
+                            sky.object_names.join(", "),
+                            sky.camera_pos
                         );
                     }
                     let triangles = WorldModels::parse(&bytes)
@@ -293,6 +322,23 @@ fn load_intro(renderer: &mut Renderer, sim: &mut Simulation, mount: &GameMount) 
                         objects.ambient,
                         props,
                     );
+                    if sky.is_none() && objects.sky.is_some() {
+                        match sky::load_sky_cubemap(&mut index, renderer, sky::INTRO_SKY_MAT) {
+                            Ok(id) => {
+                                log::info!(
+                                    "sky cubemap from SkyPointer fallback {}",
+                                    sky::INTRO_SKY_MAT
+                                );
+                                sky = Some(id);
+                            }
+                            Err(err) => log::warn!("sky fallback: {err}"),
+                        }
+                    }
+                    if let Some(sky) = sky {
+                        sim.set_sky(Some(sky));
+                    } else if objects.sky.is_some() {
+                        log::warn!("SkyPointer есть, cubemap не загрузился");
+                    }
                 }
                 Err(err) => log::error!("upload {INTRO_WORLD}: {err}"),
             }
@@ -417,6 +463,13 @@ fn upload_world_models(
     let mut props = Vec::new();
     for place in &objects.models {
         if place.hidden {
+            continue;
+        }
+        if objects
+            .sky
+            .as_ref()
+            .is_some_and(|sky| sky.contains_model(&place.name))
+        {
             continue;
         }
         let Some(&mesh) = gpu.get(&place.name.to_ascii_lowercase()) else {

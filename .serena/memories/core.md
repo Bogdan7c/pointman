@@ -8,7 +8,7 @@
 
 ## Текущая фаза
 
-Сейчас фаза 1 (картинка Intro 1:1), следующий пункт **1.1 небо**. Slow-mo / оружие / HUD не начинать, пока фаза 1 не закрыта сверкой скринов.
+Сейчас фаза 1 (картинка Intro 1:1). Код 1.1 (SkyPointer/SkyCamera, `DdsCubemap`, lighting cubemap) есть; фаза не закрыта, пока двор на скрине без серой дыры. Дальше 1.2 болванки на стенах. Slow-mo / оружие / HUD не начинать, пока фаза 1 не закрыта сверкой скринов.
 
 Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре.
 
@@ -19,7 +19,7 @@ Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 S
 - `apps/pointman` — игровой бинарь (winit, ввод, загрузка Intro). Не раздувать `main.rs` новым load-path.
 - `apps/reztool` — CLI для Arch00/REZ (probe/list/world/extract)
 - `crates/assets` — Arch00 (`LTAR`), REZ, World00p, WorldObjects, WorldModels, DDS/Mat00. Данных игры не возит.
-- `crates/render` — Vulkan 1.1+ `ash`, deferred G-buffer. `backend.rs` уже сильно больше 700–800 строк — новые Vulkan-фичи только в отдельные модули. Тонкий контракт: `DrawList`, `MeshInstance`, `PointLight`, `TextureId`.
+- `crates/render` — Vulkan 1.1+ `ash`, deferred G-buffer. `backend.rs` уже сильно больше 700–800 строк — новые Vulkan-фичи только в отдельные модули. Тонкий контракт: `DrawList`, `MeshInstance`, `PointLight`, `TextureId`, `CubemapId` (небо, не стена). `DrawList.sky: Option<CubemapId>` — пустые пиксели lighting pass семплят cubemap. `DdsCubemap` отдельно от `DdsImage` (куб не грузится как 2D). `WorldSky` из SkyPointer/SkyCamera. Vulkan cubemap только в `crates/render/src/cubemap.rs`.
 - `crates/engine` — `Simulation`, игрок, `ClipMesh`, `Input`
 - `crates/game` — `Config`, `GameMount`, catalog/index, Steam-пути
 - `crates/ai` — GOAP (`Planner`, `replica` demo vocabulary)

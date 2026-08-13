@@ -10,7 +10,7 @@ use glam::{Mat4, Vec3, Vec4};
 use pointman_ai::replica::{self, ALERT, HAS_WEAPON, TARGET_VISIBLE, WEAPON_LOADED};
 use pointman_ai::{Goal, Plan, Planner, WorldState};
 use pointman_render::{
-    corridor_boxes, Camera, DrawList, MeshId, MeshInstance, PointLight, TextureId,
+    corridor_boxes, Camera, CubemapId, DrawList, MeshId, MeshInstance, PointLight, TextureId,
 };
 
 pub struct LevelDraw {
@@ -43,6 +43,7 @@ struct LoadedLevel {
     clip: Option<ClipMesh>,
     lights: Vec<LevelLight>,
     ambient: Vec3,
+    sky: Option<CubemapId>,
 }
 
 pub struct Replica {
@@ -139,6 +140,7 @@ impl Simulation {
             clip,
             lights,
             ambient,
+            sky: None,
         });
         let center = (min + max) * 0.5;
         let extent = max - min;
@@ -162,6 +164,13 @@ impl Simulation {
             ambient,
             extent
         );
+    }
+
+    /// Небо кадра: cubemap из SkyPointer/SkyCube. Вызывать после `set_level`.
+    pub fn set_sky(&mut self, sky: Option<CubemapId>) {
+        if let Some(level) = self.level.as_mut() {
+            level.sky = sky;
+        }
     }
 
     pub fn time_scale(&self) -> f32 {
@@ -377,6 +386,7 @@ impl Simulation {
             instances,
             lights,
             ambient,
+            sky: self.level.as_ref().and_then(|level| level.sky),
         }
     }
 }
@@ -602,5 +612,28 @@ mod tests {
             .expect("world model instance missing from draw list");
         let translation = prop.transform.to_scale_rotation_translation().2;
         assert!((translation.x - 50.0).abs() < 0.1);
+        assert!(list.sky.is_none(), "sky must stay off until set_sky");
+    }
+
+    #[test]
+    fn sky_cubemap_reaches_draw_list() {
+        let mut sim = Simulation::new();
+        sim.set_level(
+            MeshId::CUBE,
+            vec![],
+            Vec3::ZERO,
+            Vec3::ONE,
+            Some(Vec3::new(0.0, 90.0, 0.0)),
+            Some(0.0),
+            vec![],
+            vec![],
+            Vec3::splat(0.1),
+            vec![],
+        );
+        sim.set_sky(Some(CubemapId::SKY));
+        let list = sim.draw_list();
+        assert_eq!(list.sky, Some(CubemapId::SKY));
+        sim.tick(0.016, &mut Input::default());
+        assert_eq!(sim.draw_list().sky, Some(CubemapId::SKY));
     }
 }

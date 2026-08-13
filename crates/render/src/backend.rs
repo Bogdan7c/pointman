@@ -1,3 +1,4 @@
+use crate::cubemap::{self, CubemapId, CubemapUpload};
 use crate::material::{self, MAX_MATERIALS};
 use crate::mesh::Vertex;
 use crate::texture::{self, GpuTexture, TextureId, TextureUpload, MAX_TEXTURES};
@@ -26,7 +27,8 @@ struct FrameUbo {
     color_intensity: [[f32; 4]; 8],
     dir_cone: [[f32; 4]; 8],
     light_count: u32,
-    _pad: [u32; 3],
+    sky_enabled: u32,
+    _pad: [u32; 2],
 }
 
 #[repr(C)]
@@ -89,6 +91,7 @@ pub struct Renderer {
     gbuffer_fb: vk::Framebuffer,
     light_fbs: Vec<vk::Framebuffer>,
     sampler: vk::Sampler,
+    cubemap_sampler: vk::Sampler,
     ubo_layout: vk::DescriptorSetLayout,
     sampled_layout: vk::DescriptorSetLayout,
     material_layout: vk::DescriptorSetLayout,
@@ -103,6 +106,7 @@ pub struct Renderer {
     frame_index: usize,
     meshes: Vec<GpuMesh>,
     textures: Vec<GpuTexture>,
+    cubemap: Option<GpuTexture>,
     materials: HashMap<(u32, u32, u32), vk::DescriptorSet>,
 }
 
@@ -183,6 +187,7 @@ impl Renderer {
         let gbuffer_pass = create_gbuffer_pass(&device)?;
         let lighting_pass = create_lighting_pass(&device, swap_format)?;
         let sampler = create_sampler(&device)?;
+        let cubemap_sampler = cubemap::create_cube_sampler(&device)?;
         let (ubo_layout, sampled_layout) = create_set_layouts(&device)?;
         let material_layout = material::create_material_layout(&device)?;
         let push_range = vk::PushConstantRange::default()
@@ -238,7 +243,7 @@ impl Renderer {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                descriptor_count: 4 + MAX_MATERIALS * 3,
+                descriptor_count: 5 + MAX_MATERIALS * 3,
             },
         ];
         let descriptor_pool = unsafe {
@@ -369,6 +374,7 @@ impl Renderer {
             gbuffer_fb: vk::Framebuffer::null(),
             light_fbs: Vec::new(),
             sampler,
+            cubemap_sampler,
             ubo_layout,
             sampled_layout,
             material_layout,
@@ -387,11 +393,13 @@ impl Renderer {
                 index_count: inds.len() as u32,
             }],
             textures: Vec::new(),
+            cubemap: None,
             materials: HashMap::new(),
         };
         Self::push_fallback(&mut renderer, texture::white_upload())?;
         Self::push_fallback(&mut renderer, texture::flat_normal_upload())?;
         Self::push_fallback(&mut renderer, texture::black_spec_upload())?;
+        renderer.upload_cubemap(cubemap::dummy_upload())?;
         renderer.recreate_gbuffer()?;
         Ok(renderer)
     }
@@ -461,6 +469,33 @@ impl Renderer {
         let id = TextureId(self.textures.len() as u32);
         self.textures.push(gpu);
         Ok(id)
+    }
+
+    /// Заменяет GPU-cubemap неба. Старый слот освобождается — это не TextureId стены.
+    pub fn upload_cubemap(&mut self, data: CubemapUpload<'_>) -> Result<CubemapId, RenderError> {
+        unsafe { self.device.device_wait_idle()? };
+        let allocator = self
+            .allocator
+            .as_mut()
+            .ok_or_else(|| RenderError::Alloc("allocator gone".into()))?;
+        let gpu = cubemap::upload_cubemap(
+            &self.device,
+            self.queue,
+            self.cmd_pool,
+            allocator,
+            data,
+        )?;
+        if let Some(old) = self.cubemap.take() {
+            cubemap::destroy_cubemap(&self.device, allocator, old)?;
+        }
+        cubemap::bind_cubemap(
+            &self.device,
+            self.sampled_set,
+            self.cubemap_sampler,
+            gpu.view,
+        );
+        self.cubemap = Some(gpu);
+        Ok(CubemapId::SKY)
     }
 
     fn ensure_materials(&mut self, list: &DrawList) -> Result<(), RenderError> {
@@ -603,7 +638,8 @@ impl Renderer {
             color_intensity: [[0.0; 4]; 8],
             dir_cone: [[0.0; 4]; 8],
             light_count: list.lights.len().min(8) as u32,
-            _pad: [0; 3],
+            sky_enabled: u32::from(list.sky.is_some()),
+            _pad: [0; 2],
         };
         for (i, light) in list.lights.iter().take(8).enumerate() {
             ubo.pos_radius[i] = [light.position.x, light.position.y, light.position.z, light.radius];
@@ -921,6 +957,14 @@ impl Renderer {
                 .image_info(std::slice::from_ref(&infos[3])),
         ];
         unsafe { self.device.update_descriptor_sets(&writes, &[]) };
+        if let Some(cube) = &self.cubemap {
+            cubemap::bind_cubemap(
+                &self.device,
+                self.sampled_set,
+                self.cubemap_sampler,
+                cube.view,
+            );
+        }
         self.albedo = Some(albedo);
         self.normal = Some(normal);
         self.spec = Some(spec);
@@ -1003,6 +1047,9 @@ impl Drop for Renderer {
         for tex in self.textures.drain(..) {
             let _ = allocator.free(tex.alloc);
         }
+        if let Some(cube) = self.cubemap.take() {
+            let _ = cubemap::destroy_cubemap(&self.device, &mut allocator, cube);
+        }
         drop(allocator);
         unsafe {
             self.device.destroy_pipeline(self.gbuffer_pipe, None);
@@ -1014,6 +1061,7 @@ impl Drop for Renderer {
             self.device.destroy_descriptor_set_layout(self.material_layout, None);
             self.device.destroy_descriptor_pool(self.descriptor_pool, None);
             self.device.destroy_sampler(self.sampler, None);
+            self.device.destroy_sampler(self.cubemap_sampler, None);
             self.device.destroy_render_pass(self.gbuffer_pass, None);
             self.device.destroy_render_pass(self.lighting_pass, None);
             self.device.destroy_command_pool(self.cmd_pool, None);
@@ -1303,6 +1351,11 @@ fn create_set_layouts(
             .stage_flags(vk::ShaderStageFlags::FRAGMENT),
         vk::DescriptorSetLayoutBinding::default()
             .binding(3)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT),
+        vk::DescriptorSetLayoutBinding::default()
+            .binding(4)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT),

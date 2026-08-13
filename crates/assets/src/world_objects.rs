@@ -51,12 +51,29 @@ pub struct WorldModelPlacement {
     pub hidden: bool,
 }
 
+/// Небо уровня: камера неба + имена объектов из SkyPointer (куб, облака, FX).
+#[derive(Debug, Clone)]
+pub struct WorldSky {
+    pub camera_pos: Vec3,
+    pub object_names: Vec<String>,
+}
+
+impl WorldSky {
+    /// WorldModel из списка SkyObject0..7 не рисуем в мире — только в sky pass.
+    pub fn contains_model(&self, name: &str) -> bool {
+        self.object_names
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case(name))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorldObjects {
     pub starts: Vec<GameStart>,
     pub lights: Vec<WorldLight>,
     pub models: Vec<WorldModelPlacement>,
     pub ambient: Vec3,
+    pub sky: Option<WorldSky>,
 }
 
 impl Default for WorldObjects {
@@ -66,6 +83,7 @@ impl Default for WorldObjects {
             lights: Vec::new(),
             models: Vec::new(),
             ambient: Vec3::splat(0.1),
+            sky: None,
         }
     }
 }
@@ -95,6 +113,8 @@ fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
     let mut lights = Vec::new();
     let mut models = Vec::new();
     let mut ambient = Vec3::splat(25.0 / 255.0);
+    let mut sky_camera = None;
+    let mut sky_names = Vec::new();
     for _ in 0..count {
         let type_name = read_lt_string(&mut c)?;
         let bag = read_property_bag(&mut c)?;
@@ -114,17 +134,30 @@ fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
             if let Some(color) = bag.colour("AmbientLight") {
                 ambient = color / 255.0;
             }
+        } else if type_name == "SkyCamera" {
+            sky_camera = bag.vector("Pos");
+        } else if type_name == "SkyPointer" {
+            sky_names.extend(sky_object_names(&bag));
         } else if WORLD_MODEL_TYPES.iter().any(|t| *t == type_name) {
             if let Some(place) = world_model_placement(&bag) {
                 models.push(place);
             }
         }
     }
+    let sky = if sky_camera.is_some() || !sky_names.is_empty() {
+        Some(WorldSky {
+            camera_pos: sky_camera.unwrap_or(Vec3::ZERO),
+            object_names: sky_names,
+        })
+    } else {
+        None
+    };
     Ok(WorldObjects {
         starts,
         lights,
         models,
         ambient,
+        sky,
     })
 }
 
@@ -153,6 +186,17 @@ fn world_model_placement(bag: &PropertyBag) -> Option<WorldModelPlacement> {
         rotation: Quat::from_xyzw(q[0], q[1], q[2], q[3]),
         hidden: bag.int("StartHidden").unwrap_or(0) != 0,
     })
+}
+
+fn sky_object_names(bag: &PropertyBag) -> Vec<String> {
+    (0..8)
+        .filter_map(|slot| {
+            let key = format!("SkyObject{slot}");
+            bag.string(&key)
+                .filter(|name| !name.is_empty())
+                .map(|name| name.to_string())
+        })
+        .collect()
 }
 
 fn yaw_from_xyzw(q: [f32; 4]) -> f32 {
@@ -354,6 +398,73 @@ mod tests {
         world.extend_from_slice(&section);
         let objects = WorldObjects::parse(&world).unwrap();
         assert!(objects.lights.is_empty());
+    }
+
+    #[test]
+    fn parses_sky_pointer_and_camera() {
+        let mut world = vec![0u8; 56];
+        world[0..4].copy_from_slice(&FEAR_WORLD_VERSION.to_le_bytes());
+        world[12..16].copy_from_slice(&56u32.to_le_bytes());
+        let mut section = Vec::new();
+        section.extend_from_slice(&3u32.to_le_bytes());
+        write_sky_camera(&mut section, [-2500.0, -1036.0, -3220.0]);
+        write_sky_pointer(
+            &mut section,
+            "Sky_Japan00.SkyCube",
+            "Sky_Japan00.Clouds",
+        );
+        write_world_model(&mut section, "Sky_Japan00.SkyCube", false);
+        world.extend_from_slice(&section);
+
+        let objects = WorldObjects::parse(&world).unwrap();
+        let sky = objects.sky.expect("sky missing");
+        assert_eq!(sky.camera_pos, Vec3::new(-2500.0, -1036.0, -3220.0));
+        assert_eq!(
+            sky.object_names,
+            vec![
+                "Sky_Japan00.SkyCube".to_string(),
+                "Sky_Japan00.Clouds".to_string()
+            ]
+        );
+        assert!(sky.contains_model("Sky_Japan00.SkyCube"));
+        assert!(sky.contains_model("sky_japan00.clouds"));
+        assert!(!sky.contains_model("Crate00"));
+        assert_eq!(objects.models.len(), 1);
+    }
+
+    fn write_sky_camera(buf: &mut Vec<u8>, pos: [f32; 3]) {
+        write_lt(buf, "SkyCamera");
+        let mut heap = Vec::new();
+        let name_key = push_cstr(&mut heap, "Name");
+        let name_val = push_cstr(&mut heap, "SkyCamera00");
+        let pos_key = push_cstr(&mut heap, "Pos");
+        let pos_val = heap.len();
+        write_f32s(&mut heap, &pos);
+        buf.extend_from_slice(&2u32.to_le_bytes());
+        buf.extend_from_slice(&(heap.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&heap);
+        write_prop(buf, name_key, PROP_STRING, name_val as u32);
+        write_prop(buf, pos_key, PROP_VECTOR, pos_val as u32);
+    }
+
+    fn write_sky_pointer(buf: &mut Vec<u8>, cube: &str, clouds: &str) {
+        write_lt(buf, "SkyPointer");
+        let mut heap = Vec::new();
+        let name_key = push_cstr(&mut heap, "Name");
+        let name_val = push_cstr(&mut heap, "Sky_Japan00.SkyPointer");
+        let cube_key = push_cstr(&mut heap, "SkyObject0");
+        let cube_val = push_cstr(&mut heap, cube);
+        let cloud_key = push_cstr(&mut heap, "SkyObject1");
+        let cloud_val = push_cstr(&mut heap, clouds);
+        let empty_key = push_cstr(&mut heap, "SkyObject2");
+        let empty_val = push_cstr(&mut heap, "");
+        buf.extend_from_slice(&4u32.to_le_bytes());
+        buf.extend_from_slice(&(heap.len() as u32).to_le_bytes());
+        buf.extend_from_slice(&heap);
+        write_prop(buf, name_key, PROP_STRING, name_val as u32);
+        write_prop(buf, cube_key, PROP_STRING, cube_val as u32);
+        write_prop(buf, cloud_key, PROP_STRING, cloud_val as u32);
+        write_prop(buf, empty_key, PROP_STRING, empty_val as u32);
     }
 
     fn write_start(buf: &mut Vec<u8>) {

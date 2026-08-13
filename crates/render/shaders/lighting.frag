@@ -11,21 +11,30 @@ layout(set = 0, binding = 0) uniform Frame {
     vec4 color_intensity[8];
     vec4 dir_cone[8];
     uint light_count;
+    uint sky_enabled;
     uint _pad0;
     uint _pad1;
-    uint _pad2;
 } frame;
 
 layout(set = 1, binding = 0) uniform sampler2D u_albedo;
 layout(set = 1, binding = 1) uniform sampler2D u_normal;
 layout(set = 1, binding = 2) uniform sampler2D u_spec;
 layout(set = 1, binding = 3) uniform sampler2D u_depth;
+layout(set = 1, binding = 4) uniform samplerCube u_sky;
 
 void main() {
     vec4 albedo = texture(u_albedo, v_uv);
     float depth = texture(u_depth, v_uv).r;
     if (depth >= 0.9999) {
-        out_color = vec4(frame.ambient.rgb * 0.35, 1.0);
+        if (frame.sky_enabled != 0u) {
+            // Луч из камеры через пиксель: тот же lookup, что skybox.fx по −normal куба.
+            vec4 clip = vec4(v_uv * 2.0 - 1.0, 1.0, 1.0);
+            vec4 world = frame.inv_view_proj * clip;
+            vec3 dir = normalize(world.xyz / world.w - frame.camera_pos.xyz);
+            out_color = vec4(texture(u_sky, dir).rgb, 1.0);
+        } else {
+            out_color = vec4(frame.ambient.rgb * 0.35, 1.0);
+        }
         return;
     }
 

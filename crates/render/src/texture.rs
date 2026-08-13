@@ -250,7 +250,7 @@ pub(crate) fn black_spec_upload() -> TextureUpload<'static> {
     }
 }
 
-fn vk_format(format: TextureFormat) -> vk::Format {
+pub(crate) fn vk_format(format: TextureFormat) -> vk::Format {
     match format {
         TextureFormat::Rgba8 => vk::Format::R8G8B8A8_UNORM,
         TextureFormat::Bgra8 => vk::Format::B8G8R8A8_UNORM,
@@ -260,7 +260,7 @@ fn vk_format(format: TextureFormat) -> vk::Format {
     }
 }
 
-fn mip_bytes(width: u32, height: u32, format: TextureFormat) -> usize {
+pub(crate) fn mip_bytes(width: u32, height: u32, format: TextureFormat) -> usize {
     match format {
         TextureFormat::Rgba8 | TextureFormat::Bgra8 => {
             width as usize * height as usize * 4
@@ -278,12 +278,12 @@ fn mip_bytes(width: u32, height: u32, format: TextureFormat) -> usize {
     }
 }
 
-struct Staging {
-    buffer: vk::Buffer,
-    alloc: Option<Allocation>,
+pub(crate) struct Staging {
+    pub buffer: vk::Buffer,
+    pub alloc: Option<Allocation>,
 }
 
-fn create_staging(
+pub(crate) fn create_staging(
     device: &Device,
     allocator: &mut Allocator,
     size: u64,

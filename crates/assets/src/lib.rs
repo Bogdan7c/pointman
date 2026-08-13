@@ -14,10 +14,10 @@ mod world_models;
 mod world_objects;
 
 pub use world_models::{WorldBsp, WorldModels};
-pub use world_objects::{GameStart, WorldLight, WorldModelPlacement, WorldObjects};
+pub use world_objects::{GameStart, WorldLight, WorldModelPlacement, WorldObjects, WorldSky};
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};
-pub use dds::{DdsFormat, DdsImage};
+pub use dds::{DdsCubemap, DdsFormat, DdsImage};
 pub use error::AssetError;
 pub use extensions::{kind_from_path, ResourceKind};
 pub use mat00::Material;
