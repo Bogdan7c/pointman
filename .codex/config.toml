@@ -1,0 +1,29 @@
+[mcp_servers.ghidra]
+command = "/home/bogdan/.local/bin/uv"
+args = [
+    "run",
+    "--directory",
+    "/home/bogdan/src/ghidra-mcp",
+    "bridge-mcp-ghidra",
+]
+
+[mcp_servers.ghidra.env]
+JAVA_HOME = "/home/bogdan/src/jdk-21"
+PATH = "/home/bogdan/src/jdk-21/bin:/usr/bin:/usr/sbin"
+
+[mcp_servers.kwin-mcp]
+command = "/home/bogdan/.local/bin/kwin-mcp"
+args = ["--default-live-session"]
+
+[mcp_servers.kwin-mcp.env]
+WAYLAND_DISPLAY = "wayland-0"
+XDG_RUNTIME_DIR = "/run/user/1000"
+DBUS_SESSION_BUS_ADDRESS = "unix:path=/run/user/1000/bus"
+
+[mcp_servers.serena]
+command = "/home/bogdan/.local/bin/serena"
+args = [
+    "start-mcp-server",
+    "--project=/home/bogdan/projects/pointman",
+    "--context=ide",
+]

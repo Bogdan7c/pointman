@@ -6,5 +6,6 @@
 .DS_Store
 /game-data
 /extracted
+/local
 .env
 pointman.toml

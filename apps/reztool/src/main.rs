@@ -1,7 +1,8 @@
 use anyhow::{bail, Context};
 use clap::{Parser, Subcommand};
 use pointman_assets::{
-    kind_from_path, ArchHeader, GameArchive, WorldHeader, WorldModels, WorldObjects, WorldRender,
+    kind_from_path, ArchHeader, GameArchive, RawWorldObjects, WorldHeader, WorldModels,
+    WorldObjects, WorldRender,
 };
 use std::path::PathBuf;
 
@@ -28,6 +29,12 @@ enum Cmd {
         out: PathBuf,
         #[arg(long)]
         filter: Option<String>,
+    },
+    /// Сырой дамп объектов World00p: типы, лампы, WorldProperties. Не рисует кадр.
+    DumpDraw {
+        path: PathBuf,
+        #[arg(long, default_value = "Worlds/Release/Intro.World00p")]
+        name: String,
     },
 }
 
@@ -72,12 +79,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::World { path, name } => {
-            let bytes = if path.is_dir() {
-                let mount = pointman_game::GameMount::discover(&path);
-                mount.read_file(&name).with_context(|| name.clone())?
-            } else {
-                std::fs::read(&path).with_context(|| path.display().to_string())?
-            };
+            let bytes = read_world_bytes(&path, &name)?;
             let world = WorldRender::parse(&bytes)?;
             let (verts, indices, draws) = world.flatten();
             println!(
@@ -141,6 +143,7 @@ fn main() -> anyhow::Result<()> {
                 Err(err) => println!("world objects: {err}"),
             }
         }
+        Cmd::DumpDraw { path, name } => dump_draw(&path, &name)?,
         Cmd::Extract {
             archive,
             out,
@@ -175,6 +178,59 @@ fn main() -> anyhow::Result<()> {
                 std::fs::write(&dest, bytes)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn read_world_bytes(path: &std::path::Path, name: &str) -> anyhow::Result<Vec<u8>> {
+    if path.is_dir() {
+        let mount = pointman_game::GameMount::discover(path);
+        mount.read_file(name).with_context(|| name.to_string())
+    } else {
+        std::fs::read(path).with_context(|| path.display().to_string())
+    }
+}
+
+fn dump_draw(path: &std::path::Path, name: &str) -> anyhow::Result<()> {
+    let bytes = read_world_bytes(path, name)?;
+    let raw = RawWorldObjects::parse(&bytes)?;
+    println!("objects {}  file {name}", raw.objects.len());
+    println!("types:");
+    for (ty, count) in raw.type_histogram() {
+        println!("  {count:>5}  {ty}");
+    }
+    println!("WorldProperties:");
+    for object in raw.of_type("WorldProperties") {
+        for prop in &object.properties {
+            println!("  {} = {}", prop.name, prop.value);
+        }
+    }
+    println!("lights:");
+    for object in &raw.objects {
+        if !object.type_name.starts_with("Light") {
+            continue;
+        }
+        print!("  [{}]", object.type_name);
+        for prop in &object.properties {
+            print!("  {}={}", prop.name, prop.value);
+        }
+        println!();
+    }
+    println!("RenderTargetGroup:");
+    for object in raw.of_type("RenderTargetGroup") {
+        print!("  [{}]", object.type_name);
+        for prop in &object.properties {
+            print!("  {}={}", prop.name, prop.value);
+        }
+        println!();
+    }
+    println!("RenderTarget:");
+    for object in raw.of_type("RenderTarget") {
+        print!("  [{}]", object.type_name);
+        for prop in &object.properties {
+            print!("  {}={}", prop.name, prop.value);
+        }
+        println!();
     }
     Ok(())
 }

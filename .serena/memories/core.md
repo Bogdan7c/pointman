@@ -12,6 +12,8 @@
 
 Lighting: Jupiter EX Blinn-Phong, не clustered/PBR. Геймпад: Xbox 360 SKU. PhysicsBSP — коллизия, не вторая стена в кадре. WorldModel в кадр только если его нет в запечённом меше: `world_model_in_frame` + `BakedOverlapIndex` (ячейка 16 см, порог доли 0.6). Не рисуем болванкой: PhysicsBSP, Visible=0, StartHidden, небо, Translucent (альфа — 1.5), `*shadow*` (пятно машины). Машины/двери/пропы остаются. World00p индексы как в файле (совпадают с vertex normal); не менять i1/i2 — иначе кулится пол двора. G-buffer мира: CullMode::NONE, потому что цоколь Intro (Concrete_Wall / Brick_Red под black.Mat00) смотрит внутрь здания; BACK cull давал щель с небом под домом.
 
+Оригинальный Jupiter EX — спека `docs/jupiter-ex/` (кадр + физика + ИИ + шеллы), память `mem:jupiter-ex-draw`, skill `pointman-ghidra`. Forward: Ambient → (ShadowVolume+лампа)×N → Translucent → BlackLight (`0x00510680`). Falloff `(1-sat((d/r)²))²`. Retail FEAR.exe — SteamStub 2.1, Ghidra unpacked на HTTP 8090. MCP `ghidra` в `.cursor/mcp.json`.
+
 ## Workspace crates
 
 Контракт кадра: `Simulation::tick` → `draw_list()` → `Renderer::draw`.

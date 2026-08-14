@@ -11,6 +11,14 @@
 Для картинки, света, неба и «видно ли баг на экране» используй kwin MCP **только в live-режиме** — реальное окно на GPU, не виртуальный KWin.
 
 - Сервер: `kwin-mcp --default-live-session` в `.cursor/mcp.json`. Операционный цикл: skill `pointman-kwin-live`.
+
+## Реверс оригинального движка (Ghidra MCP)
+
+Закрытый Jupiter EX живёт в розничном `FEAR.exe` (SteamStub 2.1 — для Ghidra только **unpacked**), не в SDK. Игра: `GameClient.dll` / `GameServer.dll`. Агент ходит в Ghidra через проектный MCP `ghidra` (stdio-бридж `bridge-mcp-ghidra` → headless HTTP на localhost). Операционный цикл: skill `pointman-ghidra`. Спека: `docs/jupiter-ex/` (кадр + физика + ИИ + шеллы).
+
+- Headless на `127.0.0.1`. Не DXVK-захват как истина D3D9. Packed `.bind` не анализировать.
+- В git — спека `docs/jupiter-ex/` и адреса/имена. Не декомпил, не `.fx`, не PE.
+- SDK и `.fx` — карта входов в кадр; порядок проходов и stencil — из Ghidra + D3D9-тракт.
 - Сначала `session_connect`, потом `list_windows` → `focus_window` на `POINTMAN — F.E.A.R. native` → `screenshot`. Клавиши (WASD и т.п.) — только после фокуса на игре, иначе улетят в Cursor.
 - `session_start` / `kwin_wayland --virtual` **запрещены**: там нет нормальной видеокарты, 1:1 бессмысленен.
 - `session_stop` только отключает MCP, игру не убивает.

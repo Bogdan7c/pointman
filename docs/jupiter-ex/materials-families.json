@@ -1,0 +1,1117 @@
+{
+  "source": "archive local/fear-extract/Shaders + Ghidra technique table 0x0056dab8",
+  "note": "Per-file techniques перегенерированы 2026-08-14 из extract: парсер терял Directional/Translucent и писал фантомную строку 'technique'.",
+  "extracted_counts": {
+    "fx": 96,
+    "fxi": 36,
+    "fxo": 132
+  },
+  "engine_techniques": [
+    {
+      "id": 0,
+      "name": "Ambient"
+    },
+    {
+      "id": 1,
+      "name": "Translucent"
+    },
+    {
+      "id": 2,
+      "name": "Point"
+    },
+    {
+      "id": 3,
+      "name": "PointFill"
+    },
+    {
+      "id": 4,
+      "name": "SpotProjector"
+    },
+    {
+      "id": 5,
+      "name": "CubeProjector"
+    },
+    {
+      "id": 6,
+      "name": "Directional"
+    },
+    {
+      "id": 7,
+      "name": "BlackLight",
+      "in_fx": false,
+      "note": "exe table only"
+    },
+    {
+      "id": 8,
+      "name": "ShadowVolume"
+    },
+    {
+      "id": 9,
+      "name": "ShadowVolumeDebug"
+    },
+    {
+      "id": 10,
+      "name": "DirectionalShadowVolume"
+    },
+    {
+      "id": 11,
+      "name": "DirectionalShadowVolumeDebug"
+    },
+    {
+      "id": 12,
+      "name": "FogVolume_Depth"
+    },
+    {
+      "id": 13,
+      "name": "FogVolume_Blend"
+    }
+  ],
+  "d3dx_technique_names_in_sources": [
+    "Ambient",
+    "Translucent",
+    "Point",
+    "PointFill",
+    "SpotProjector",
+    "CubeProjector",
+    "Directional",
+    "ShadowVolume",
+    "ShadowVolumeDebug",
+    "DirectionalShadowVolume",
+    "DirectionalShadowVolumeDebug",
+    "FogVolume_Depth",
+    "FogVolume_Blend",
+    "Stub"
+  ],
+  "families": [
+    {
+      "id": "specular",
+      "paths": [
+        "rigid/Solid/specular.fx"
+      ],
+      "math": "point_fill_closed_fxo",
+      "status": "partial"
+    },
+    {
+      "id": "specular_alphatest",
+      "alpha_ref": 96,
+      "alpha_func": "Greater",
+      "note": "AlphaTest persist TRUE+96 на volume и Point — Intro Present 10987749 (capture)",
+      "status": "verified-capture"
+    },
+    {
+      "id": "diffuse",
+      "status": "partial"
+    },
+    {
+      "id": "skeletal",
+      "note": "34 wrappers (32 чистые include-заглушки, Solid/ 18); skin.fx/anisotropic.fx/neon_inside.fx missing from extract",
+      "status": "partial"
+    },
+    {
+      "id": "emissive",
+      "techniques": [
+        "Ambient"
+      ],
+      "status": "verified-static"
+    },
+    {
+      "id": "glass",
+      "note": "закрыто из .fx: Blinn как specular, L.z=abs(L.z), ZFunc LessEqual, Stencil off, SrcBlend One; env lerp cubemap*mask",
+      "status": "verified-static"
+    },
+    {
+      "id": "skybox",
+      "techniques": [
+        "Ambient"
+      ],
+      "ps": "texCUBE(-N)*tint*object",
+      "status": "verified-static"
+    },
+    {
+      "id": "sky_overlay",
+      "file": "sky.fx",
+      "techniques": [
+        "Translucent"
+      ],
+      "status": "partial"
+    },
+    {
+      "id": "shadowvolume",
+      "extrusion": "2.0/fInvLightRadius",
+      "status": "verified-static"
+    },
+    {
+      "id": "drawprim",
+      "modes": [
+        "NoBlend",
+        "Additive",
+        "Translucent"
+      ],
+      "status": "verified-static"
+    },
+    {
+      "id": "blacklight",
+      "note": "Spot-клон 0x0051bab0 + lit 0x0050ffc0 tech 7; technique в .fx нет (exe id 7), PS в Arch00 нет",
+      "status": "verified-static"
+    },
+    {
+      "id": "particles_clientfx",
+      "in_arch00_shaders": false,
+      "status": "partial"
+    },
+    {
+      "id": "cloth",
+      "note": "rim lerp(rim,diffuse,sat(N*V*fRimScale)), fRimScale=2; Lambert*atten без spec",
+      "status": "verified-static"
+    },
+    {
+      "id": "hair",
+      "note": "aniso tAnisotropyMap CLAMP, TBN из N x (0,1,0); Ambient AlphaRef 96; Fill без aniso spec",
+      "status": "verified-static"
+    },
+    {
+      "id": "post",
+      "note": "screeneffect (16-tap radial + sharpen), motionblur, blur, depthoffield (FogVolume_Blend), refract* — закрыты из .fx",
+      "status": "verified-static"
+    },
+    {
+      "id": "decals",
+      "note": "bake pack-5: multiply.fx Zero/SrcColor; model decals: tex2Dproj; WorldEdit Decal = CF_NORUNTIME",
+      "status": "verified-static"
+    },
+    {
+      "id": "neon",
+      "note": "neon_outside: 8-tap cur-frame blur; neon_inside missing from extract",
+      "status": "partial"
+    },
+    {
+      "id": "volumetric_sfx",
+      "note": "volslice: cookie proj + (1-sat(d^2))^2, One/One; noise/dir variants open",
+      "status": "partial"
+    },
+    {
+      "id": "translucent_additive",
+      "note": "translucent.fx SrcAlpha/InvSrcAlpha vs additive*.fx SrcAlpha/One; falloff/noz variants open",
+      "status": "partial"
+    },
+    {
+      "id": "shadow_blur",
+      "note": "CopyStencil 2 pass + Blur 1 в backbuffer-size RT; SRCBLEND после blur = DESTALPHA(7) — бинарь 0x51694f; default off",
+      "status": "verified-static"
+    },
+    {
+      "id": "fog_water",
+      "note": "FogVolume_Depth/Blend в alphatest/hair/DOF/murky; Depth EncodeDepth, Blend partial",
+      "status": "partial"
+    },
+    {
+      "id": "null",
+      "note": "rigid/null.fx technique Stub, 0 passes",
+      "status": "verified-static"
+    },
+    {
+      "id": "model_fx",
+      "note": "упомянут в Mat00/тестах; в extract нет",
+      "status": "unknown"
+    }
+  ],
+  "missing_from_extract": [
+    "Shaders/sdk/*.fxh",
+    "rigid/Solid/skin.fx",
+    "anisotropic.fx",
+    "neon_inside.fx",
+    "rigid/Solid/cloth_detail.fx"
+  ],
+  "fx_files": {
+    "Internal/DrawPrimModulateAdditive.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 1497
+    },
+    "Internal/DrawPrimModulateNoBlend.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 1450
+    },
+    "Internal/DrawPrimModulateTranslucent.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 1505
+    },
+    "Internal/ShadowBlur_BlurBuffer.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3004
+    },
+    "Internal/ShadowBlur_CopyStencil.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 1102
+    },
+    "rigid/Prototype/dissolve.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 15406
+    },
+    "rigid/Prototype/murky_water_high.fx": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 1955
+    },
+    "rigid/Prototype/murky_water_low.fx": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 1949
+    },
+    "rigid/Prototype/murky_water_medium.fx": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 1952
+    },
+    "rigid/Prototype/river.fx": {
+      "techniques": [
+        "Ambient"
+      ],
+      "size": 7595
+    },
+    "rigid/Prototype/specular_bump.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 11841
+    },
+    "rigid/Prototype/specular_mirror.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 13929
+    },
+    "rigid/Prototype/terrain.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 10048
+    },
+    "rigid/Prototype/terrain_blend.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 13951
+    },
+    "rigid/Solid/Effect/depthoffield.fx": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 4888
+    },
+    "rigid/Solid/Effect/mirror.fx": {
+      "techniques": [
+        "Translucent",
+        "Ambient"
+      ],
+      "size": 4210
+    },
+    "rigid/Solid/Prototype/refract_water_mirror.fx": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 6309
+    },
+    "rigid/Solid/cloth.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 11742
+    },
+    "rigid/Solid/diffuse.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 9534
+    },
+    "rigid/Solid/emissive.fx": {
+      "techniques": [
+        "Ambient"
+      ],
+      "size": 2358
+    },
+    "rigid/Solid/glass.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 10203
+    },
+    "rigid/Solid/glass_env.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 14209
+    },
+    "rigid/Solid/glass_env_flat.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 11362
+    },
+    "rigid/Solid/glass_flat.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 9438
+    },
+    "rigid/Solid/hair.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 14965
+    },
+    "rigid/Solid/sky.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2168
+    },
+    "rigid/Solid/skybox.fx": {
+      "techniques": [
+        "Ambient"
+      ],
+      "size": 2380
+    },
+    "rigid/Solid/specular.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 10518
+    },
+    "rigid/Solid/specular_alphatest.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 12147
+    },
+    "rigid/Solid/specular_alphatest_bump.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 13458
+    },
+    "rigid/Solid/specular_bump.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 11862
+    },
+    "rigid/Solid/specular_env.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 15147
+    },
+    "rigid/Solid/twotonepaint.fx": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 15248
+    },
+    "rigid/Translucent/Effect/blur.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4219
+    },
+    "rigid/Translucent/Effect/feedback.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3973
+    },
+    "rigid/Translucent/Effect/feedbackblur.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2992
+    },
+    "rigid/Translucent/Effect/motionblur.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3331
+    },
+    "rigid/Translucent/Effect/refract.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 5142
+    },
+    "rigid/Translucent/Effect/refract_additive.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 5043
+    },
+    "rigid/Translucent/Effect/refract_blur.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 5724
+    },
+    "rigid/Translucent/Effect/refract_dx9.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4813
+    },
+    "rigid/Translucent/Effect/refract_thick.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4671
+    },
+    "rigid/Translucent/Effect/screeneffect.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 5429
+    },
+    "rigid/Translucent/Effect/screeneffect_bleach.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 5950
+    },
+    "rigid/Translucent/VolumetricLight/volshell.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3761
+    },
+    "rigid/Translucent/VolumetricLight/volslice.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2635
+    },
+    "rigid/Translucent/VolumetricLight/volslice_dir.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2749
+    },
+    "rigid/Translucent/VolumetricLight/volslice_noise.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3535
+    },
+    "rigid/Translucent/VolumetricLight/volslice_noise_dir.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3561
+    },
+    "rigid/Translucent/VolumetricLight/volslice_shadow.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2925
+    },
+    "rigid/Translucent/VolumetricLight/volslice_shadow_dir.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3176
+    },
+    "rigid/Translucent/VolumetricLight/volslice_shadow_noise.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3874
+    },
+    "rigid/Translucent/VolumetricLight/volslice_shadow_noise_dir.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3979
+    },
+    "rigid/Translucent/additive.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2787
+    },
+    "rigid/Translucent/additive_falloff.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2912
+    },
+    "rigid/Translucent/additive_noz.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2583
+    },
+    "rigid/Translucent/cloud.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3737
+    },
+    "rigid/Translucent/multiply.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2839
+    },
+    "rigid/Translucent/neon_outside.fx": {
+      "techniques": [
+        "Ambient",
+        "Translucent"
+      ],
+      "size": 5707
+    },
+    "rigid/Translucent/spectral.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4368
+    },
+    "rigid/Translucent/translucent.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 2874
+    },
+    "rigid/null.fx": {
+      "techniques": [
+        "Stub"
+      ],
+      "size": 856
+    },
+    "skeletal/Prototype/dissolve.fx": {
+      "techniques": [],
+      "size": 73
+    },
+    "skeletal/Solid/Effect/depthoffield.fx": {
+      "techniques": [],
+      "size": 83
+    },
+    "skeletal/Solid/Effect/refract_water.fx": {
+      "techniques": [],
+      "size": 84
+    },
+    "skeletal/Solid/anisotropic.fx": {
+      "techniques": [],
+      "size": 72
+    },
+    "skeletal/Solid/cloth.fx": {
+      "techniques": [],
+      "size": 66
+    },
+    "skeletal/Solid/cloth_detail.fx": {
+      "techniques": [],
+      "size": 73
+    },
+    "skeletal/Solid/diffuse.fx": {
+      "techniques": [],
+      "size": 68
+    },
+    "skeletal/Solid/emissive.fx": {
+      "techniques": [],
+      "size": 69
+    },
+    "skeletal/Solid/glass.fx": {
+      "techniques": [],
+      "size": 66
+    },
+    "skeletal/Solid/glass_env.fx": {
+      "techniques": [],
+      "size": 70
+    },
+    "skeletal/Solid/glass_env_flat.fx": {
+      "techniques": [],
+      "size": 75
+    },
+    "skeletal/Solid/glass_flat.fx": {
+      "techniques": [],
+      "size": 71
+    },
+    "skeletal/Solid/hair.fx": {
+      "techniques": [],
+      "size": 65
+    },
+    "skeletal/Solid/neon_inside.fx": {
+      "techniques": [],
+      "size": 72
+    },
+    "skeletal/Solid/skin.fx": {
+      "techniques": [],
+      "size": 65
+    },
+    "skeletal/Solid/specular.fx": {
+      "techniques": [],
+      "size": 69
+    },
+    "skeletal/Solid/specular_alphatest.fx": {
+      "techniques": [],
+      "size": 79
+    },
+    "skeletal/Solid/specular_env.fx": {
+      "techniques": [],
+      "size": 73
+    },
+    "skeletal/Solid/twotonepaint.fx": {
+      "techniques": [],
+      "size": 73
+    },
+    "skeletal/Translucent/Decal/multiply.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3449
+    },
+    "skeletal/Translucent/Effect/blur.fx": {
+      "techniques": [],
+      "size": 81
+    },
+    "skeletal/Translucent/Effect/feedback.fx": {
+      "techniques": [],
+      "size": 85
+    },
+    "skeletal/Translucent/Effect/feedbackblur.fx": {
+      "techniques": [],
+      "size": 89
+    },
+    "skeletal/Translucent/Effect/motionblur.fx": {
+      "techniques": [],
+      "size": 87
+    },
+    "skeletal/Translucent/Effect/multiply.fx": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3582
+    },
+    "skeletal/Translucent/Effect/refract.fx": {
+      "techniques": [],
+      "size": 84
+    },
+    "skeletal/Translucent/Effect/refract_additive.fx": {
+      "techniques": [],
+      "size": 93
+    },
+    "skeletal/Translucent/Effect/refract_blur.fx": {
+      "techniques": [],
+      "size": 89
+    },
+    "skeletal/Translucent/Effect/refract_thick.fx": {
+      "techniques": [],
+      "size": 90
+    },
+    "skeletal/Translucent/additive.fx": {
+      "techniques": [],
+      "size": 75
+    },
+    "skeletal/Translucent/cloud.fx": {
+      "techniques": [],
+      "size": 72
+    },
+    "skeletal/Translucent/neon_outside.fx": {
+      "techniques": [],
+      "size": 79
+    },
+    "skeletal/Translucent/spectral.fx": {
+      "techniques": [],
+      "size": 75
+    },
+    "skeletal/Translucent/translucent.fx": {
+      "techniques": [],
+      "size": 78
+    }
+  },
+  "fx_file_count": 96,
+  "all_technique_names_in_fx": [
+    "Ambient",
+    "CubeProjector",
+    "Directional",
+    "FogVolume_Blend",
+    "FogVolume_Depth",
+    "Point",
+    "PointFill",
+    "SpotProjector",
+    "Stub",
+    "Translucent"
+  ],
+  "fxi_files": {
+    "rigid/Prototype/dissolve_dx8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 26449
+    },
+    "rigid/Prototype/murky_water_cube.fxi": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 7946
+    },
+    "rigid/Prototype/murky_water_dx8.fxi": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 6006
+    },
+    "rigid/Prototype/murky_water_mirror.fxi": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 8087
+    },
+    "rigid/Prototype/river_dx8.fxi": {
+      "techniques": [
+        "Ambient"
+      ],
+      "size": 3855
+    },
+    "rigid/Prototype/specular_mirror_dx8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 26413
+    },
+    "rigid/Prototype/terrain_blend_dx8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 13892
+    },
+    "rigid/Solid/Effect/mirror_dx8.fxi": {
+      "techniques": [
+        "Translucent",
+        "Ambient"
+      ],
+      "size": 3225
+    },
+    "rigid/Solid/Prototype/refract_water_mirror_dx8.fxi": {
+      "techniques": [
+        "FogVolume_Blend"
+      ],
+      "size": 6714
+    },
+    "rigid/Solid/diffuse_dx8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 17834
+    },
+    "rigid/Solid/glass_dx8.fxi": {
+      "techniques": [
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 23725
+    },
+    "rigid/Solid/glass_flat_dx8.fxi": {
+      "techniques": [
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 22717
+    },
+    "rigid/Solid/specular_DX8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional"
+      ],
+      "size": 24612
+    },
+    "rigid/Solid/specular_alphatest_dx8.fxi": {
+      "techniques": [
+        "Ambient",
+        "Point",
+        "PointFill",
+        "SpotProjector",
+        "CubeProjector",
+        "Directional",
+        "FogVolume_Depth"
+      ],
+      "size": 26062
+    },
+    "rigid/Translucent/Effect/blur_dx8.fxi": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 3833
+    },
+    "rigid/Translucent/Effect/refract_dx8.fxi": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4404
+    },
+    "rigid/Translucent/Effect/screeneffect_dx8.fxi": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4474
+    },
+    "rigid/shadowvolume.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1022
+    },
+    "rigid/shadowvolume_base.fxi": {
+      "techniques": [
+        "ShadowVolumeDebug",
+        "DirectionalShadowVolumeDebug"
+      ],
+      "size": 3752
+    },
+    "rigid/shadowvolume_safe.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1401
+    },
+    "rigid/testfill_11.fxi": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4288
+    },
+    "rigid/testfill_20.fxi": {
+      "techniques": [
+        "Translucent"
+      ],
+      "size": 4507
+    },
+    "skeletal/Prototype/dissolve_dx8.fxi": {
+      "techniques": [],
+      "size": 78
+    },
+    "skeletal/Solid/diffuse_dx8.fxi": {
+      "techniques": [],
+      "size": 73
+    },
+    "skeletal/Solid/glass_dx8.fxi": {
+      "techniques": [],
+      "size": 71
+    },
+    "skeletal/Solid/glass_flat_dx8.fxi": {
+      "techniques": [],
+      "size": 76
+    },
+    "skeletal/Solid/specular_DX8.fxi": {
+      "techniques": [],
+      "size": 74
+    },
+    "skeletal/Solid/specular_alphatest_dx8.fxi": {
+      "techniques": [],
+      "size": 84
+    },
+    "skeletal/Translucent/Effect/blur_dx8.fxi": {
+      "techniques": [],
+      "size": 86
+    },
+    "skeletal/Translucent/Effect/refract_dx8.fxi": {
+      "techniques": [],
+      "size": 89
+    },
+    "skeletal/rigidshadowvolume.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1035
+    },
+    "skeletal/rigidshadowvolume_base.fxi": {
+      "techniques": [
+        "ShadowVolumeDebug",
+        "DirectionalShadowVolumeDebug"
+      ],
+      "size": 4495
+    },
+    "skeletal/rigidshadowvolume_safe.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1454
+    },
+    "skeletal/shadowvolume.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1020
+    },
+    "skeletal/shadowvolume_base.fxi": {
+      "techniques": [
+        "ShadowVolumeDebug",
+        "DirectionalShadowVolumeDebug"
+      ],
+      "size": 5118
+    },
+    "skeletal/shadowvolume_safe.fxi": {
+      "techniques": [
+        "ShadowVolume",
+        "DirectionalShadowVolume"
+      ],
+      "size": 1449
+    }
+  },
+  "all_technique_names_in_fxi": [
+    "Ambient",
+    "CubeProjector",
+    "Directional",
+    "DirectionalShadowVolume",
+    "DirectionalShadowVolumeDebug",
+    "FogVolume_Blend",
+    "FogVolume_Depth",
+    "Point",
+    "PointFill",
+    "ShadowVolume",
+    "ShadowVolumeDebug",
+    "SpotProjector",
+    "Translucent"
+  ],
+  "fxi_file_count": 36,
+  "missing_from_extract_note": "Для всех перечисленных целей есть compiled .fxo — отсутствуют только исходники .fx (archive gap, не «нет в игре»)."
+}

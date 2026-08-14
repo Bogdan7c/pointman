@@ -12,10 +12,12 @@ mod rez;
 mod world00p;
 mod world_model_draw;
 mod world_models;
+mod world_object_dump;
 mod world_objects;
 
 pub use world_model_draw::{world_model_in_frame, BakedOverlapIndex};
 pub use world_models::{WorldBsp, WorldModels};
+pub use world_object_dump::{RawProp, RawWorldObject, RawWorldObjects};
 pub use world_objects::{GameStart, WorldLight, WorldModelPlacement, WorldObjects, WorldSky};
 
 pub use arch00::{Arch00, ArchFile, ArchHeader, Compression};

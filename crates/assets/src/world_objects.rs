@@ -106,7 +106,7 @@ impl WorldObjects {
     }
 }
 
-fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
+pub(crate) fn parse_at(bytes: &[u8], offset: u64) -> Result<WorldObjects, AssetError> {
     if offset as usize >= bytes.len() {
         return Err(AssetError::Truncated("object section"));
     }
@@ -211,11 +211,11 @@ fn yaw_from_xyzw(q: [f32; 4]) -> f32 {
     fwd.x.atan2(fwd.z)
 }
 
-struct PropertyBag {
-    values: Vec<(String, PropValue)>,
+pub(crate) struct PropertyBag {
+    pub values: Vec<(String, PropValue)>,
 }
 
-enum PropValue {
+pub(crate) enum PropValue {
     String(String),
     Vector(Vec3),
     Colour(Vec3),
@@ -268,7 +268,7 @@ impl PropertyBag {
     }
 }
 
-fn read_property_bag(c: &mut Cursor<&[u8]>) -> Result<PropertyBag, AssetError> {
+pub(crate) fn read_property_bag(c: &mut Cursor<&[u8]>) -> Result<PropertyBag, AssetError> {
     let prop_count = crate::read_u32(c)? as usize;
     let props_size = crate::read_u32(c)? as usize;
     let mut heap = vec![0u8; props_size];
@@ -306,7 +306,7 @@ fn read_property_bag(c: &mut Cursor<&[u8]>) -> Result<PropertyBag, AssetError> {
     Ok(PropertyBag { values })
 }
 
-fn read_lt_string(c: &mut Cursor<&[u8]>) -> Result<String, AssetError> {
+pub(crate) fn read_lt_string(c: &mut Cursor<&[u8]>) -> Result<String, AssetError> {
     let mut len_buf = [0u8; 2];
     c.read_exact(&mut len_buf)?;
     let len = u16::from_le_bytes(len_buf) as usize;
