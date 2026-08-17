@@ -36,6 +36,10 @@ enum Cmd {
         #[arg(long, default_value = "Worlds/Release/Intro.World00p")]
         name: String,
     },
+    /// Fog-параметры WorldProperties всех миров (FogEnable/Color/NearZ/FarZ, SkyFog).
+    Fog {
+        path: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -144,6 +148,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::DumpDraw { path, name } => dump_draw(&path, &name)?,
+        Cmd::Fog { path } => fog_scan(&path)?,
         Cmd::Extract {
             archive,
             out,
@@ -178,6 +183,43 @@ fn main() -> anyhow::Result<()> {
                 std::fs::write(&dest, bytes)?;
             }
         }
+    }
+    Ok(())
+}
+
+fn fog_scan(path: &std::path::Path) -> anyhow::Result<()> {
+    let mount = pointman_game::GameMount::discover(path);
+    let cat = mount.catalog();
+    let mut worlds: Vec<&str> = cat
+        .worlds
+        .iter()
+        .filter(|(n, _)| n.starts_with("Worlds/Release/") && n.ends_with(".World00p"))
+        .map(|(s, _)| s.as_str())
+        .collect();
+    worlds.sort();
+    for name in worlds {
+        let Ok(bytes) = mount.read_file(name) else {
+            continue;
+        };
+        let Ok(raw) = RawWorldObjects::parse(&bytes) else {
+            println!("{name}: parse error");
+            continue;
+        };
+        let Some(wp) = raw.of_type("WorldProperties").next() else {
+            println!("{name}: no WorldProperties");
+            continue;
+        };
+        let f = |k: &str| wp.prop(k).unwrap_or("-").to_string();
+        println!(
+            "{name}: FogEnable={} FogColor={} FogNearZ={} FogFarZ={} SkyFogEnable={} SkyFogNearZ={} SkyFogFarZ={}",
+            f("FogEnable"),
+            f("FogColor"),
+            f("FogNearZ"),
+            f("FogFarZ"),
+            f("SkyFogEnable"),
+            f("SkyFogNearZ"),
+            f("SkyFogFarZ")
+        );
     }
     Ok(())
 }

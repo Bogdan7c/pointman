@@ -128,11 +128,11 @@ for i in 0..K:         # `0x00431e80`
 |---|---|---|---|---|---|
 | 1 | 0x50 | `0x0043c770` vt `0x551934` | `0x0043c820` | `u32+0x38; u32+0x3c; name 0x30; u32+0x40; f32; u32 nVerts; u32 nIdx; n×vec3; indices` (stride **2** если nVerts<65536 иначе **4**). `fld` scale `×0.01` (`0x54c7fc`). cook `0x004ae800` | triangle mesh. **0 штук** в 495× v0x21 FEAR.Arch00 |
 | 2 | 0x44 | `0x004482d0` vt `0x551d54` | `0x00448760` | 6×f32 | box / AABB. **572** |
-| 3 | 0x44 | `0x00471960` vt `0x5542c0` | `0x00471bd0` | 3×f32: **radius_cm**, **mass**, third | sphere. Havok `0x10` `0x004afc50`; r′=`max(r×0.01, 0.005)`; inertia `0x004914d0`: V=`4/3π r′³`, I=`0.4 m r′²`. third → `+0x3c`, cook не берёт. deltaForce: `(13.5, 0.89, 18)` и т.п. **129** |
+| 3 | 0x44 | `0x00471960` vt `0x5542c0` | `0x00471bd0` | 3×f32: **radius_cm**, **mass**, **density_g** | sphere. Havok `0x10` `0x004afc50`; r′=`max(r×0.01, 0.005)`; inertia `0x004914d0`: V=`4/3π r′³`, I=`0.4 m r′²`. density → `+0x3c` (`0x00471a10`), в cook/inertia не участвует — хранится для физики/баланса. deltaForce: `(13.5, 0.89, 18)` = r 13.5 см, m 0.89 кг, ρ 18 г/см³. **129** |
 | 4 | 0x48 | `0x004179b0` vt `0x54e994` | `0x00417a40` | `u32+0x3c; u32+0x40; name 0x30; u32+0x38=k; …; u32 nVerts; n×vec3; k×16 B`. cook `0x004ad5a0` (0xe0, stride 0xc) | convex: 16 B = plane **hypothesis**. **0 штук** в Arch00 |
 | 5 | 0x40 | `0x00475cb0` vt `0x554300` | `0x004761d0` | pose `0x0041e1a0` (7×f32) + **вложенный** `0x0044ccc0` | transformed child |
 | 6 | 0x44 | `0x004257c0` vt `0x5502a8` | `0x00425b90` | u32 count + N×`0x0044ccc0` | list |
-| 7 | 0x48 | `0x00405ca0` vt `0x54c800` | `0x00406320` | 9×f32: **radius_cm**, **mass**, third, **pA xyz**, **pB xyz** | capsule. Havok `0x30` `0x004abee0`; точки ×0.01; `+0x38`=`\|pA−pB\|` (см, без ×0.01). deltaForce конечности: pA=`(0,+h,0)` pB=`(0,−h,0)` (ось Y). **809** |
+| 7 | 0x48 | `0x00405ca0` vt `0x54c800` | `0x00406320` | 9×f32: **radius_cm**, **mass**, **density_g**, **pA xyz**, **pB xyz** | capsule. Havok `0x30` `0x004abee0`; точки ×0.01; `+0x38`=`\|pA−pB\|` (см, без ×0.01); mass → `+0x3c`, density → `+0x40` (`0x00406040`). deltaForce конечности: pA=`(0,+h,0)` pB=`(0,−h,0)` (ось Y). **809** |
 | 8 | 0x44 | `0x00405600` vt `0x54c790` | `0x00405880` | два вложенных `0x0044ccc0` | compound pair |
 
 Выборка: medKit type2; deltaForce 2×type3 + 9×type7. Census **495** MODL v0x21 в FEAR.Arch00 (ещё 2× v0x1F и 13 не-MODL — лоадер `!=0x21` режет): type7 **809**, type2 **572**, type3 **129**, type5 **87**, type6 **74**, type1/4/8 **0**. Mesh-слоты в фабрике есть, в розничных v0x21 моделях не лежат.
@@ -230,7 +230,7 @@ Render FVF (tableBytes 64 во всех файлах выборки):
 
 Lit skeletal VS (**archive** `.fxo`, не 2-bone): `idx = floor(indices.zyxw * 765.005859)` (localBone×3); `w = weights.xyz` **без** renormalize и **без** `w2=1-w0-w1`; `p/n = Σ_{k=0..2} w[k] * mul(nodes[idx[k]], …)`. Палитра `float3x4[24]` (`mModelObjectNodes`, `0x480`). CPU: собрать 3×4 @ `obj+0x190` (`0x004366d0`), remap `0x0050e6e0` (не-модель = identity), commit `0x00506f60`. `GetWeightSet` — микс клипов, не VS.
 
-Fat Intro Present 10987749: **355** bind FVF 64 (pos/nrm/uv/TBN + WEIGHT + INDICES) — пропы двора, не alma 1413v. Плюс 36× 3pos-shadow, 43× 32B-shadow.
+Fat Intro Present 10987749: **355** bind FVF 64 (pos/nrm/uv/TBN + WEIGHT + INDICES) — пропы двора, не alma 1413v. Плюс **36× 3pos-shadow** (тоже stride 64: 391 = 355+36, **capture** audit), 43× 32B-shadow.
 
 `hdr[20]` blob: packed keyframe bytes (cactus 0, cheeze 20, alma 892, soldiers 518 506). Первая u16 таблицы треков 0 на cactus = 0 (**empirical**). Декомпресс: [11-animation.md](11-animation.md).
 
@@ -381,15 +381,15 @@ fn load_model00p(r):
 | type 1 nVerts/nIdx порядок полей | **Ghidra** ndisasm `0x0043c820`: `[esp+0x10]`=nVerts, `[esp+0x18]`=nIdx |
 | FEAR.Arch00 physics census 495×v0x21 | **empirical** 510 extract; type 1/4/8 = 0 |
 | type 3 r/mass + I=`0.4mr²` | **Ghidra** `0x00471bd0`/`0x004914d0` (`4.18879=4/3π`) + **empirical** deltaForce |
+| type 3/7 third float = `fDensityG` (г/см³) | **SDK** `iltphysicssim.h` `HandleSphere(vCenter, fRadius, fMassKg, fDensityG)` / `CreateCapsuleShape(vEndPt1, vEndPt2, fRadius, fMassKg, fDensityG)` |
 | type 7 capsule r/mass/pA/pB ×0.01 | **Ghidra** `0x00406320`/`0x004abee0` + **empirical** ±Y на конечностях |
 
 ## 10. Known unknowns
 
-- Type 3/7: third float (18/16 на солдате) — только хранится, cook не читает. Type 4 k×16 = planes **hypothesis** (семпла нет).
 - Смысл M-блобов (anim/constraint, не VB).
 - `DAT_00575d60` кто пишет в runtime.
 - байт +6 группы.
-- `skeletal.fxh` в Arch00 нет (макросы из `.fx`/`.fxo`). 4-я кость в lit VS нет (`w.xyz`, A не читается). Какой Model00p = 199v/254t во дворе.
+- `skeletal.fxh` в Arch00 нет (макросы из `.fx`/`.fxo`). 4-я кость в lit VS нет (`w.xyz`, A не читается). **199v/254t во дворе = скелетные модели со `specular_env`** (capture: stride 64, VS-палитра костей 3×4, 5 сэмплеров: diffuse 512×512/512×256 DXT3, spec 256×128 DXT3, normal 256×256/128 A8R8G8B8, env cube 64² DXT3 общий, env-mask 256² DXT3; 3 инстанса каждая). Имена Model00p не установлены (не критично для рендера).
 
 ## 11. Acceptance
 
@@ -401,4 +401,4 @@ fn load_model00p(r):
 
 ## 12. Status
 
-`partial`. Закрыты: слоты 1–8 диск, type 3 sphere (r, mass, third), type 7 capsule (r, mass, third, pA, pB), M format, groups/shadow, hdr[0], GetAnim*, lit VS 3 кости. Остаток: third float; type 4 без семпла; 199v двор; `skeletal.fxh` нет в архиве.
+`partial`. Закрыты: слоты 1–8 диск, type 3 sphere (r, mass, **density**), type 7 capsule (r, mass, density, pA, pB), M format, groups/shadow, hdr[0], GetAnim*, lit VS 3 кости. Остаток: type 4 без семпла; 199v двор; `skeletal.fxh` нет в архиве.

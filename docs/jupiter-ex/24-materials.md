@@ -107,7 +107,7 @@ VS skinning: `SKIN_POINT` / `SKIN_VECTOR` — **3 кости**, `w.xyz` без r
 | Post | OverlayFX `screeneffect*.fx`; surfaces `motionblur`/`blur`/`refract*`/`depthoffield` | Translucent; DOF = **FogVolume_Blend** | см. блок Post ниже | — |
 | DrawPrim | `Internal/DrawPrim*.fx` | Translucent | 3 SDK modes | — |
 | Null | `rigid/null.fx` | Stub | 0 passes | — |
-| **BlackLight** | **нет** `technique BlackLight` в `.fx` | exe id **7** | Spot-клон: те же P/V/bias (`0x0051bab0`); cookie `+0xE8`; lit `0x0050ffc0` tech **7**. Без tech 7 pass пустой. Матрицы — [02-lights.md](02-lights.md) | нет PS в Arch00; Intro flashlight Present нет |
+| **BlackLight** | **нет** `technique BlackLight` в `.fx` (все 132 файла extract + все Arch00, grep 0) | exe id **7** | Spot-клон: те же P/V/bias (`0x0051bab0`); cookie `+0xE8`; lit `0x0050ffc0` tech **7**. Без tech 7 pass пустой. **В контенте нет ни одного Mat00/света с BlackLight** → проход всегда пустой; реализовывать нечего. Матрицы — [02-lights.md](02-lights.md) | — (мёртвая ветка) |
 | Particles / PolyGrid / beams | **не** в `Shaders/` | ClientFx `GameClient.dll` | DrawPrim or custom | which material each FX binds |
 | `model.fx` | Pointman Mat00 tests | — | — | **not in extract** |
 
@@ -125,7 +125,18 @@ else:
 
 ## 8. Edge cases
 
-`*_dx8.fxi` — caps fallback. Skeletal wrappers `#include` rigid; часть targets отсутствует в extract (`skin.fx` rigid missing) — **archive** gap, не «их нет в игре».
+`*_dx8.fxi` — caps fallback. Skeletal wrappers `#include` rigid; **rigid-исходников `skin.fx` / `anisotropic.fx` / `neon_inside.fx` / `cloth_detail.fx` / `dx9lights.fxh` в extract нет, НО все скомпилированные `skeletal/Solid/*.fxo` на месте** (проверено: каждый `.fx`/`.fxi` в `Shaders/` имеет рядом `.fxo`) — математика извлекается из `.fxo`, gap не блокирует. `skin.fxo` = specular-клон с 7 сэмплерами: `tDiffuseMap`, `tEmissiveMap`, `tSpecularMap`, `tSpecularMap2` (glancing), `tSkinMap` (outer), `tBloodMap` (inner), `tNormalMap` + техники Ambient…FogVolume_Depth.
+
+**skin PS Point (capture, ps_2_0 `0xb3af2e8`, сохранён `local/ghidra/decomp/skin_ps_trace.txt`)** — 7×2D, dcl t0..t3, def c3=(-0.5,0.5,0.25,0) c4=(-1,1,0,0):
+
+1. `N = normalize(normalMap(t0) - 0.5)` (s6).
+2. **TBN из N** (как hair, без вершинного tangent): `B = normalize(cross(N, up))` через c4, `T = cross(N,B)`; `V = nrm(t2)`; `H = normalize(nrm(t1) + V)`.
+3. `r9 = (B·V)*0.5+0.5`, `r0 = (B·H)*0.5+0.5` — **проекции для blood-сэмплов**.
+4. Текстуры: `s0 = diffuse(t3)`, `s1 = emissive(r6=t3.z)`, `s2 = spec(t3*0.5+0.25)` ×2 (spec + spec2), `s3 = ?(t0)`, `s4 = skin(t0)`, `s5 = blood(r9, r0)` ×2, `s6 = normal(t0)`.
+5. Albedo-цепочка: `r1 = emissive*diffuse*spec*spec2*skin*blood` (mul-цепь), `r1 *= c1` (light color), `r4 *= c0` (spec color).
+6. Spec: `pow(blood/skin.a * fMaxSpecularPower)`; `r0 = s3 * r4`; финал `oC0 = r0 * sat(N·L) + spec*r1`.
+
+Точное соответствие s3/s4/s5 ↔ skin/blood/glancing — из порядка CTAB слотов `skin.fxo` (**partial**, не блокер: персонажи фаза 4; формула освещения = specular-клон).
 
 ## 9. Evidence
 
@@ -133,7 +144,7 @@ else:
 
 ## 10. Known unknowns
 
-VS/PS math: additive world, volumetric, skin, particles. **Cloth + hair + glass + post** закрыты из `.fx`. BlackLight: Spot-клон + tech 7, **нет** PS в Arch00. Missing-texture color **unknown** (не pink/white). Alphatest на lights — **закрыто** для Intro Present (persist). DDS/UNORM/cube — [03-materials.md](03-materials.md).
+VS/PS math: additive world, volumetric, skin, particles. **Cloth + hair + glass + post** закрыты из `.fx`. **BlackLight закрыт**: техника есть только в exe (id 7); ни один `.fx`/Mat00/свет розничного контента его не использует (grep по всем Arch00) → проход всегда пустой, PS не существует в контенте. Missing-texture color **unknown** (не pink/white). Alphatest на lights — **закрыто** для Intro Present (persist). DDS/UNORM/cube — [03-materials.md](03-materials.md).
 
 ## 11. Acceptance
 
@@ -141,4 +152,4 @@ VS/PS math: additive world, volumetric, skin, particles. **Cloth + hair + glass 
 
 ## 12. Status
 
-`partial`. Closure: BlackLight PS (нет `.fx`); missing `dx9lights.fxh`/`skin.fx`/`cloth_detail.fx`. Cloth/hair/glass/post — **закрыты** из `.fx`.
+`partial`. Closure: **все семейства имеют `.fx` или `.fxo`** (skin/anisotropic/neon/cloth_detail = skeletal `.fxo`; rigid-исходников нет, но compiled дают формулы). **skin PS Point получен из capture** (7×2D, TBN из N, mul-цепь skin*blood*спец — `skin_ps_trace.txt`). Остаток: точное соответствие сэмплер s3/s4/s5 ↔ skin/blood/glancing по CTAB `skin.fxo`; `dx9lights.fxh` нет (макросы скомпилированы в `specular.fxo`). Cloth/hair/glass/post — **закрыты** из `.fx`.

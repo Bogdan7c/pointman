@@ -99,7 +99,7 @@ fDirectional_FarPlane = dot(forward, pos) + Dz + 10   // +10 константа
 
 `tDirectional_Projection` ← `+0xE8`, `tDirectional_Attenuation` ← `+0xEC`. `tDirectional_ClipMap` сэмплится, Dir drawer **не** биндит. Capture Dir: VS **13** regs, stages **s3+s4+s5**.
 
-BlackLight: строка `"BlackLight"` `0x0055f4e0`, id **7**, cvar `DAT_0056d514`. Отдельного PS **нет**. Без tech 7 в материале pass пустой.
+BlackLight: строка `"BlackLight"` `0x0055f4e0`, id **7**, cvar `DAT_0056d514` (`Light_BlackLight`, default **0**). Тот же setup+проход, что Spot (`0x0051bab0`: проектор, frustum `0x0051b620`, vis-gather, shadow-caster `0x0051fac0`, blur-гейт, lit `0x0050ffc0` tech **7**). **В розничном контенте нет ни одного `.fx` с technique BlackLight, ни одного Mat00/света этого типа** (grep по всем 36 Arch00: только `WEAP_Blacklight`/`CA_BlackLight` — оружие-спрей UV-чернил в GameClient.dll, не свет) → при `Light_BlackLight=1` pass всё равно пустой (D3DX handle tech 7 = 0). Для 1:1 реализовывать нечего.
 
 ### Intro capture (не только fat)
 
@@ -109,7 +109,7 @@ BlackLight: строка `"BlackLight"` `0x0055f4e0`, id **7**, cvar `DAT_0056d5
 | ~160407 | Spot-like: VS 12, `1/r=0.00125` (r=800), cookie **s4** |
 | **3432322** | Dir: VS 13, `1/600`, s3+s4+s5, RGB `0.42,0.67,0.75` spec 64; Cube: VS 14, `1/r=0.003333` (r=300), cubemap **s3** |
 
-Точные индексы регистров Spot12 / Cube14 / Dir13 кроме Point c8/c9 — **не закрыты**. Flashlight Present для BlackLight нет.
+Точные индексы регистров Spot12 / Cube14 / Dir13 кроме Point c8/c9 — **не закрыты**. BlackLight-фонарика в контенте нет — не блокер.
 
 ## WorldProperties (не лампа, но свет кадра)
 

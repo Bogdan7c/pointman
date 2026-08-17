@@ -75,7 +75,11 @@ Entry **0**: `nPieces == nSectors` (119 / 240 / 121). Остальные TOC[0]�
 | 28 | u32 `0` | — |
 | 32 | u32 индекс bake-поверхности | `+4` ushort + material* |
 
-Extra: почти всегда `n=4` (квад). Factory: 180×4 + 2×3 = 726 = TOC[8]. Назначение extra (портал / clip / shadow) — **hypothesis**.
+Extra: почти всегда `n=4` (квад). Factory: 180×4 + 2×3 = 726 = TOC[8]. **Семантика: sky-порталы** (`0x00513ac0` клипит полигон плоскостью `param+0x1ec/+0x1f0/+0x1f4/+0x1f8` и расширяет AABB; `0x005187d0` собирает AABB **мира из extra** для sky-pass `0x00518a70`; `0x00515af0` рисует extra цветом `0x50ffff00` под cvar **`DrawSkyPortals`**). В боевой кадр (Ambient/light/translucent/shadow) extra **не** входят — не рисовать как стены.
+
+Кусок runtime 0x14: `+0` = ptr массива extra-записей (8 B: `{ptr vec3[], n}`), `+4` = extra count (ushort, из `u32 extra`), `+8` = visible ushort (vis), `+0xc` = ptr записей 0x20, `+0x10` = count записей (`0x005144c0` / `0x0051ebf0` / `0x00520ea0`).
+
+TOC[9]: читается в `0x0050d0a0` отдельным Read **после** `0x0050ce70`, в расчёт размера арены `sVar7` не входит, значение никуда не пишется — **зарезервирован** (0 на всех трёх картах).
 
 `347×208` и `89660÷20` отвергнуты: хвост — переменные куски, не фиксированный stride. Три карты: consume 100%, 0 leftover.
 
@@ -205,6 +209,9 @@ N/A (asset).
 | XOR 399 = `0x71+"FEAR"` | **Ghidra** `0x00479390` / `DAT_0055446c` |
 | Sector 8×u32 + 128 hull + 119 vis + 57 portal, exact size | **Ghidra** `0x00458610` + **empirical** Intro.World00p |
 | TOC[0]=bsp entries; [1]=pieces; [7]/[8]=extra count/verts; хвост 100% | **Ghidra** `0x0050d0a0`/`0x005144c0`/`0x00513f70` + **empirical** 3×v113 |
+| Extra = sky-порталы; AABB мира из extra; debug `DrawSkyPortals` | **Ghidra** `0x00513ac0`/`0x005187d0`/`0x00515af0` + cvar record `0x0056d2c8` |
+| TOC[9] читается (Read после `0x0050ce70`) и игнорируется | **Ghidra** `0x0050d0a0` asm `0050d11b` |
+| Кусок 0x14: `+0` extra, `+4` count, `+0xc` records, `+0x10` count | **Ghidra** `0x005144c0`/`0x0051ebf0`/`0x00520ea0` |
 | ReadString uint16+chars | **SDK** `iltinstream.h` + vis names Intro |
 | Blinddata `count+arena+dir`; offset от arena; nNum глобальный | **empirical** Intro 126792 B + **SDK** IDs/пропы (`KeyDataIndex` 0..25, NavMesh **26**, Shatter **27..92**) |
 | KeyFramer header v1 + Linear/Bezier stride | **SDK** `SKeyDataHeader` / `DATATYPE_TO_ENDIANFORMAT` + Intro 26/26 |
@@ -216,7 +223,7 @@ N/A (asset).
 - NavMesh: полный layout edges/polys/quadtree после header (не кадр).
 - Смысл hull vec3+f32 после плоскости; portal flags 0/2/3 и f32.
 - PhysicsBSP 12 B clip-ноды закрыты ([09-physics.md](09-physics.md)); vis kd-tree — другой блок stride 0x2c.
-- TOC[0]..[8] закрыты (три v113). TOC[9]=0 везде; семантика при ≠0 unknown.
+- TOC[0]..[9] закрыты (три v113). TOC[9] читается и игнорируется — зарезервирован.
 - Extra-полигоны: обычно квад; роль (портал/clip/shadow) **hypothesis**.
 - `vt+0x40` @ `0x00478209` — слот интерфейса. Импл LoadSector = `0x00478140`. Хвост читает `0x0050d0a0` / `0x0050cf40` / `0x005144c0` / `0x00513f70`.
 - `header.offset` в transforms.
@@ -227,4 +234,4 @@ Synthetic World00p (без retail) крутит parse+winding test. Intro option
 
 ## 12. Status
 
-`verified-static` по TOC[0]–[8] и layout хвоста (Ghidra + 3 карты, consume 100%). TOC[9] и семантика extra open. Не тащить extra в кадр, пока не ясно зачем они.
+`verified-static` по TOC[0]–[9] и layout хвоста (Ghidra + 3 карты, consume 100%). Extra = sky-порталы (AABB мира + debug DrawSkyPortals), в кадр не входят. TOC[9] = зарезервирован.

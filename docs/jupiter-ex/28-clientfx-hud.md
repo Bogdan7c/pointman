@@ -152,7 +152,7 @@ Playing HUD и splash/menu — **разные** пути. `CInterfaceMgr::Update
 
 Layout overlays (`Client/Overlay`: Binoculars, Zoom, Damage, SignalStatic) стартуют hidden — `DrawPrimMaterial` layout `Mask`, не ClientFX Overlay keys.
 
-Fat Present 10987749: 2 world Translucent additive (`0x00517e70`) + **7** HUD additive + 2 Translucent quads + `StretchRect`. `CHUDMgr` Additive не ставит — dest-One = DrawPrimMaterial (ClientFX Overlay / HUDAnimation / weapon RT). Какие именно 7+2 — **не закрыто**. `CameraPixelDouble` default **0** — не объясняет StretchRect.
+Fat Present 10987749: 2 world Translucent additive (`0x00517e70`) + **7** HUD additive + 2 Translucent quads + `StretchRect`. `CHUDMgr` Additive не ставит — dest-One = DrawPrimMaterial (ClientFX Overlay / HUDAnimation / weapon RT). **Capture 10987000-10987749** (`fear-intro-20260813-224237.trace`): после мира идут 6× DIP 15v/16tri stride 64, PS white c0 (ambient 0.098=25/255), разные VS-матрицы (неопознаны — кандидат: оружие/модель игрока/частицы), затем **HUD-блок** = **2 translucent-квада** (10987639, 10987682): stride **24**, 4v/2tri, `SetTexture(0)=0x31d8d18` (**4×4 A8R8G8B8**, создан call 387 на init — white-заглушка), VS `0xbce3358` с орто-матрицей `{0.0015625=1/640, 0, 0, -1; 0, -0.002777778=1/360, 0, 1; …}` = **пиксельные координаты 1280×720** (Y-инверт), PS `0xbce3288`, SrcAlpha/InvSrcAlpha, Z off, Cull None, потом StateBlock Capture+Apply и EndScene. **"7 additive HUD" в этом кадре в хвосте не видны** — либо раньше 10987000, либо этот кадр без них; item IDs (какие элементы) — **не закрыто** (нужен dump текстур handle→имя). `CameraPixelDouble` default **0** — не объясняет StretchRect.
 
 Шрифты: `LayoutDB` `Interface/Fonts` Face + `Interface/Shared.FontFile[i]` → `ILTTextureString::RegisterCustomFontFile` (**exe**, не GameClient). HUD Face = layout `Font` или `Shared.HUDFont`. Glyphs = dynamic atlas → DrawPrim. Scale `width/640`, `height/480`; widescreen если aspect ≥ 14/9. Конкретные пути `FontFile` живут в `FEAR.Gamdb00p` (в дереве нет).
 
@@ -162,7 +162,7 @@ Bink = **`FEAR.exe` `CLTVideoTexture` + `Binkw32.dll`**. `GameClient.dll` Bink-�
 
 1. Splash movies — `DisableMovies` **и** `NoMovies`.
 2. Menu `ScreenMovie` — **не** гейтится этими cvars (движок no-op без Binkw32).
-3. In-world: `VideoController` (type 13) `FindVideoTexture` — **не создаёт**. Overlay (15) может сэмплить video texture.
+3. In-world: `VideoController` (type 13) `FindVideoTexture` — **не создаёт**. Overlay (15) может сэмплить video texture. **Intro world capture (10987749): 0 вызовов Bink/UpdateTexture** — `FEAR_Fettel.bik` (брифинг `FEAR_Briefing_Pause`) в кадре мира не рисуется (DisableMovies / до брифинга).
 
 `World.Fx00p`: `GameIntroPause`/`Restart` → `videos\GameIntro.bik`. Intro dump имеет `FEAR_Briefing_Pause`, не `GameIntroPause`. `interface.Fx00p`: имена `Hud_Zoom_*_bink` **без** `.bik` path.
 
@@ -200,7 +200,7 @@ if state != LOADING: FlipScreen()
 
 - `RenderCamera(false)` не прячет HUD. `DrawInterface 0` прячет только Back HUD.
 - Volumetric глушит `DrawSky` на время своего view.
-- Intro: 7 RT + 2 group (**dump-draw**). Thin 256² = ReflectGroup Med (**capture**). Какой из 4 зеркал last-writer — **partial**. `Test_RTG` dangling.
+- Intro: 7 RT + 2 group (**dump-draw**). Thin 256² = ReflectGroup Med (**capture**). **Capture 10002149-10004272**: зеркальная сессия = SetRenderTarget(256² surface 0xba659d0 от текстуры 0xba63b80, создана 157920) → viewport 256 → Clear ALL → **две камеры подряд** (VIEW `(-29200,-2235,-3480)` и `(-2500,-1036,3219)`), каждая: projection player-FOV + clip-проекция (near 0.01), маленький viewport 36×38 (зеркальный quad-проектор), затем Clear Z|STENCIL и полный рендер мира в 256². **Оба зеркала пишут в одну текстуру, last-writer = вторая камера** (порядок = порядок RT в группе). Какой объект соответствует какой камере — `partial` (нужен расчёт отражения через плоскость зеркала). `Test_RTG` dangling.
 - Particles не отдельный `.fx` в Arch00.
 - Имена Intro FX + world StartOn props закрыты (**dump-draw** + **archive** Fx00p). HUD OverlayMaterial→`.fx` закрыто. `LensFX_Heli_Good` = 0 keys.
 
@@ -230,7 +230,7 @@ if state != LOADING: FlipScreen()
 
 ## 10. Known unknowns
 
-Какой из 4 ReflectGroup зеркал last-writer в 256. Пишет ли DrawPrim HUD в RT. Cube RT. Fat 7 additive + 2 Translucent quads — какие группы. Fat StretchRect source. `FontFile`/Face в `FEAR.Gamdb00p`. `Hud_Zoom_*_bink` VideoName. `GameIntro.bik` на `GameStartPoint00`. `Hud_MotionBlur_Loop.Mat00` нет в Arch00. PolyGrid. `Test_RTG` dangling.
+Сопоставить VIEW-камеры зеркальных сессий с RT-объектами (расчёт отражения). Пишет ли DrawPrim HUD в RT. Cube RT. Fat 7 additive + 2 Translucent quads — какие группы. Fat StretchRect source. `FontFile`/Face в `FEAR.Gamdb00p`. `Hud_Zoom_*_bink` VideoName. `GameIntro.bik` на `GameStartPoint00`. `Hud_MotionBlur_Loop.Mat00` нет в Arch00. PolyGrid. `Test_RTG` dangling.
 
 ## 11. Acceptance
 
