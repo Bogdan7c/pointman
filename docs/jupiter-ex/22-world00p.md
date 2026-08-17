@@ -25,23 +25,59 @@ Header 56 bytes:
 
 Magic XOR для counts в BSP: `raw ^ 399`. Exe считает так же: старт `0x71`, плюс байты строки `"FEAR"` в `DAT_0055446c` (`0x00479390`, **Ghidra**). `113+'F'+'E'+'A'+'R'=399`.
 
-Render section: **10×u32 TOC** @ `render_section_offset`, затем mesh body (counts **повторяются**). SharedBSP `0x00479c50` эту секцию **не** читает. Client `0x004781b0`: `Seek(render)` → нерезолвленный `vt+0x40` @ `0x00478209` (не слот CWorldClientBSP `0x00554380`).
+Render section: **10×u32 TOC** @ `render_section_offset`, затем mesh body (counts **повторяются**). SharedBSP `0x00479c50` эту секцию **не** читает.
 
-Intro preamble: `(347, 465, 2268, 1, 508, 1, 2268, 108, 432, 0)`
+`CWorldClientBSP` vtable `0x00554380` — **14** слотов (`+0x00`…`+0x34`), потом строка имени. `LoadFromStream` `0x004781b0` зовёт **интерфейсные** `[vt+0x40]` / `[vt+0x44]` @ `0x00478209`/`0x00478223` — на этой таблице их нет. Импл LoadSector = `0x00478140` (**vt+0x34**): `this+=0x40; jmp 0x00458610`. **vt+0x30** `0x00478150` = хук `DAT_00575d74` (в PE ноль, заполняется в runtime). Публичный Load `0x004782c0`: `IWorldSharedBSP` `DAT_005753e8` vt+0x0c → член `this+4`, затем vt+0x2c, `0x00478170`. Layout объекта: `+4` shared, `+0x40` WorldTree, `+0x60` resource, `+0x64` loaded, `+0x66` имя. (**Ghidra**)
 
-| Slot | Intro | Смысл |
+Preamble на трёх v113 (**empirical** Intro / Factory / WTF_Entry):
+
+| Slot | Intro | Factory | WTF_Entry | Смысл |
+|---|---|---|---|---|
+| [0] | 347 | 715 | 338 | число **записей** хвоста = PhysicsBSP `bsp_count`. Таблица `DAT_00576ff4+0x18` |
+| [1] | 465 | 954 | 458 | число **кусков** (0x14): `[0] + nSectors − 1`. Entry0 даёт `nSectors` кусков, остальные по 1 |
+| [2] / [6] | 2268 | 5013 | 2475 | `surface_count`; столько же 36 B AABB в хвосте |
+| [3] | 1 | 1 | 1 | `render_mesh_count`; цикл `0x0050d0a0`; Pointman error если ≠1 |
+| [4] | 508 | 698 | 521 | `material_count` |
+| [5] | 1 | 1 | 1 | = [3] на всех трёх; exe ≠1 **unknown** |
+| [7] | 108 | 182 | 80 | число extra-полигонов (`0x00513f70`) |
+| [8] | 432 | 726 | 320 | Σ вершин extra. Обычно 4 (квад); Factory 180×4+2×3=726 |
+| [9] | 0 | 0 | 0 | читается (`0x0050d0a0` 10-й u32); мир где ≠0 не найден |
+
+Сразу после 40 B: mesh `unknown_id=0`, те же surface/material counts, VB/IB, 11 pack defs, 2268×36 B surfaces, 508 имён Mat00. Pointman читает 10 u32, требует `[3]=1`, остальное игнор.
+
+### Хвост render → sector (**Ghidra** `0x0050d0a0` + **empirical** 3 карты)
+
+После имён Mat00 stream стоит на хвосте. Reader: `0x0050ce70` (TOC[0..8]) + ещё один Read (TOC[9]) → один mesh `0x00512000` (цикл TOC[3]) → **TOC[0]** раз `0x0050cf40`.
+
+```text
+# 0x0050cf40 × TOC[0]
+u32 nPieces
+# 0x005144c0 × nPieces
+u32 nRec
+u32 extra          # используются младшие 16 бит
+nRec × 36 B        # runtime record 0x20
+# 0x00513f70 × extra
+u8 n
+n × 12 B           # vec3
+```
+
+Entry **0**: `nPieces == nSectors` (119 / 240 / 121). Остальные TOC[0]−1 записей: `nPieces == 1`. Отсюда TOC[1] = TOC[0] + nSectors − 1.
+
+Σ `nRec` = `surface_count` (каждая bake-поверхность ровно один раз). Intro «заголовок» `119,66,12` — это `nPieces, nRec, extra` **первого куска**, не глобальный hdr.
+
+Запись 36 B → runtime 0x20 (`0x005144c0`, 9×Read 4):
+
+| Off disk | Поле | Runtime 0x20 |
 |---|---|---|
-| [0] | 347 | Pointman `_branch_count`, **не используется**. Hypothesis: render-BSP / world-block count хвоста |
-| [1] | 465 | open; `465−347=118` ≈ `nSectors−1` |
-| [2] / [6] | 2268 | `surface_count` (дубль TOC = body) |
-| [3] | 1 | `render_mesh_count`; Pointman **error если ≠1**; exe ≠1 **unknown** |
-| [4] | 508 | `material_count` |
-| [5] | 1 | open; на Intro = [3] |
-| [7] | 108 | open |
-| [8] | 432 | `108×4` (**empirical**) |
-| [9] | 0 | sentinel/flags; нужен мир где ≠0 |
+| 0 | AABB min xyz | `+8` |
+| 12 | AABB max xyz | `+0x14` |
+| 24 | u32 flags (часто `0`; `1`/`3` = shadowvolume) | `+6/+7` LOD/flags |
+| 28 | u32 `0` | — |
+| 32 | u32 индекс bake-поверхности | `+4` ushort + material* |
 
-Сразу после 40 B: mesh `unknown_id=0`, те же surface/material counts, VB/IB, 11 pack defs, 2268×36 B surfaces, 508 имён Mat00. Pointman читает 10 u32, требует `[3]=1`, остальное игнор; **92 048 B** между materials и sector **не** парсит. Хвост начинается `119, 66, 12` + AABB; `347×208+108×184=92048` режет AABB — stride **не** доказан. Нужен второй World00p, чтобы развести [2] vs [6] и [3] vs [5].
+Extra: почти всегда `n=4` (квад). Factory: 180×4 + 2×3 = 726 = TOC[8]. Назначение extra (портал / clip / shadow) — **hypothesis**.
+
+`347×208` и `89660÷20` отвергнуты: хвост — переменные куски, не фиксированный stride. Три карты: consume 100%, 0 leftover.
 
 Vertex pack: location 0 pos, 3 normal, 5 UV, 6 tangent, 7 binormal. Indices u16, winding **as-file**.
 
@@ -168,6 +204,7 @@ N/A (asset).
 | v113, header 56B, winding | **empirical** Intro tests `world00p.rs` |
 | XOR 399 = `0x71+"FEAR"` | **Ghidra** `0x00479390` / `DAT_0055446c` |
 | Sector 8×u32 + 128 hull + 119 vis + 57 portal, exact size | **Ghidra** `0x00458610` + **empirical** Intro.World00p |
+| TOC[0]=bsp entries; [1]=pieces; [7]/[8]=extra count/verts; хвост 100% | **Ghidra** `0x0050d0a0`/`0x005144c0`/`0x00513f70` + **empirical** 3×v113 |
 | ReadString uint16+chars | **SDK** `iltinstream.h` + vis names Intro |
 | Blinddata `count+arena+dir`; offset от arena; nNum глобальный | **empirical** Intro 126792 B + **SDK** IDs/пропы (`KeyDataIndex` 0..25, NavMesh **26**, Shatter **27..92**) |
 | KeyFramer header v1 + Linear/Bezier stride | **SDK** `SKeyDataHeader` / `DATATYPE_TO_ENDIANFORMAT` + Intro 26/26 |
@@ -179,7 +216,9 @@ N/A (asset).
 - NavMesh: полный layout edges/polys/quadtree после header (не кадр).
 - Смысл hull vec3+f32 после плоскости; portal flags 0/2/3 и f32.
 - PhysicsBSP 12 B clip-ноды закрыты ([09-physics.md](09-physics.md)); vis kd-tree — другой блок stride 0x2c.
-- Render preamble: [2]/[3]/[4]/[6] закрыты на Intro; [0]=347 не используется (Pointman `_branch_count`, hypothesis: world-block count хвоста); [1]/[5]/[7]/[8]/[9] и exe-reader `vt+0x40` — open. Хвост 92 048 B.
+- TOC[0]..[8] закрыты (три v113). TOC[9]=0 везде; семантика при ≠0 unknown.
+- Extra-полигоны: обычно квад; роль (портал/clip/shadow) **hypothesis**.
+- `vt+0x40` @ `0x00478209` — слот интерфейса. Импл LoadSector = `0x00478140`. Хвост читает `0x0050d0a0` / `0x0050cf40` / `0x005144c0` / `0x00513f70`.
 - `header.offset` в transforms.
 
 ## 11. Acceptance
@@ -188,4 +227,4 @@ Synthetic World00p (без retail) крутит parse+winding test. Intro option
 
 ## 12. Status
 
-`partial` (render+sector+volumes+blinddata+TOC [2]/[3]/[4]/[6] на Intro). Vis flood закрыт в [27-visibility-sort.md](27-visibility-sort.md). Не тащить blinddata/sector/хвост preamble в Pointman ради картинки Intro.
+`verified-static` по TOC[0]–[8] и layout хвоста (Ghidra + 3 карты, consume 100%). TOC[9] и семантика extra open. Не тащить extra в кадр, пока не ясно зачем они.

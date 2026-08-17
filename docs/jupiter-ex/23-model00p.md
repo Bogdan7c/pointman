@@ -13,6 +13,7 @@ Packed model `*.Model00p`. Парсера в Pointman нет. Ниже — loade
 | Чтение файла | `0x004325a0` (вызов `0x004314d0`) |
 | Fallback | `0x00459130` → `"default.Model00p"` |
 | Runtime API | **SDK** `iltmodel.h` `CLTModel*` |
+| Кадр | `OT_MODEL` `0x0051f200`: модель `object+0x110`, materials `object+0x13c` (`0x00435b80` = getter). Поверхности stride 0x34 через `0x00511fb0`. [06-world-draw.md](06-world-draw.md) |
 
 ## 3. Inputs / binary layout
 
@@ -127,11 +128,11 @@ for i in 0..K:         # `0x00431e80`
 |---|---|---|---|---|---|
 | 1 | 0x50 | `0x0043c770` vt `0x551934` | `0x0043c820` | `u32+0x38; u32+0x3c; name 0x30; u32+0x40; f32; u32 nVerts; u32 nIdx; n×vec3; indices` (stride **2** если nVerts<65536 иначе **4**). `fld` scale `×0.01` (`0x54c7fc`). cook `0x004ae800` | triangle mesh. **0 штук** в 495× v0x21 FEAR.Arch00 |
 | 2 | 0x44 | `0x004482d0` vt `0x551d54` | `0x00448760` | 6×f32 | box / AABB. **572** |
-| 3 | 0x44 | `0x00471960` vt `0x5542c0` | `0x00471bd0` | 3×f32 | sphere. **129** |
+| 3 | 0x44 | `0x00471960` vt `0x5542c0` | `0x00471bd0` | 3×f32: **radius_cm**, **mass**, third | sphere. Havok `0x10` `0x004afc50`; r′=`max(r×0.01, 0.005)`; inertia `0x004914d0`: V=`4/3π r′³`, I=`0.4 m r′²`. third → `+0x3c`, cook не берёт. deltaForce: `(13.5, 0.89, 18)` и т.п. **129** |
 | 4 | 0x48 | `0x004179b0` vt `0x54e994` | `0x00417a40` | `u32+0x3c; u32+0x40; name 0x30; u32+0x38=k; …; u32 nVerts; n×vec3; k×16 B`. cook `0x004ad5a0` (0xe0, stride 0xc) | convex: 16 B = plane **hypothesis**. **0 штук** в Arch00 |
 | 5 | 0x40 | `0x00475cb0` vt `0x554300` | `0x004761d0` | pose `0x0041e1a0` (7×f32) + **вложенный** `0x0044ccc0` | transformed child |
 | 6 | 0x44 | `0x004257c0` vt `0x5502a8` | `0x00425b90` | u32 count + N×`0x0044ccc0` | list |
-| 7 | 0x48 | `0x00405ca0` vt `0x54c800` | `0x00406320` | 9×f32 | capsule **hypothesis** (`+Y/−Y`) |
+| 7 | 0x48 | `0x00405ca0` vt `0x54c800` | `0x00406320` | 9×f32: **radius_cm**, **mass**, third, **pA xyz**, **pB xyz** | capsule. Havok `0x30` `0x004abee0`; точки ×0.01; `+0x38`=`\|pA−pB\|` (см, без ×0.01). deltaForce конечности: pA=`(0,+h,0)` pB=`(0,−h,0)` (ось Y). **809** |
 | 8 | 0x44 | `0x00405600` vt `0x54c790` | `0x00405880` | два вложенных `0x0044ccc0` | compound pair |
 
 Выборка: medKit type2; deltaForce 2×type3 + 9×type7. Census **495** MODL v0x21 в FEAR.Arch00 (ещё 2× v0x1F и 13 не-MODL — лоадер `!=0x21` режет): type7 **809**, type2 **572**, type3 **129**, type5 **87**, type6 **74**, type1/4/8 **0**. Mesh-слоты в фабрике есть, в розничных v0x21 моделях не лежат.
@@ -379,14 +380,16 @@ fn load_model00p(r):
 | hdr[0] = Σ piece.N (reloc-пары) | **empirical** cactus/cheeze/medKit/alma/deltaForce/soldiers; size-fn n×8 |
 | type 1 nVerts/nIdx порядок полей | **Ghidra** ndisasm `0x0043c820`: `[esp+0x10]`=nVerts, `[esp+0x18]`=nIdx |
 | FEAR.Arch00 physics census 495×v0x21 | **empirical** 510 extract; type 1/4/8 = 0 |
+| type 3 r/mass + I=`0.4mr²` | **Ghidra** `0x00471bd0`/`0x004914d0` (`4.18879=4/3π`) + **empirical** deltaForce |
+| type 7 capsule r/mass/pA/pB ×0.01 | **Ghidra** `0x00406320`/`0x004abee0` + **empirical** ±Y на конечностях |
 
 ## 10. Known unknowns
 
-- Точные float'ы type 3/7 (capsule **hypothesis**). Type 4 k×16 = planes **hypothesis** (семпла нет).
+- Type 3/7: third float (18/16 на солдате) — только хранится, cook не читает. Type 4 k×16 = planes **hypothesis** (семпла нет).
 - Смысл M-блобов (anim/constraint, не VB).
 - `DAT_00575d60` кто пишет в runtime.
 - байт +6 группы.
-- Текст `skeletal.fxh`; 4-я кость (в проверенных lit VS нет); какой Model00p = 199v/254t во дворе.
+- `skeletal.fxh` в Arch00 нет (макросы из `.fx`/`.fxo`). 4-я кость в lit VS нет (`w.xyz`, A не читается). Какой Model00p = 199v/254t во дворе.
 
 ## 11. Acceptance
 
@@ -398,4 +401,4 @@ fn load_model00p(r):
 
 ## 12. Status
 
-`partial`. Закрыты: слоты 1–8 **диск**, M format, groups/shadow, **hdr[0]=Σ piece.N**, **GetAnim***, lit VS **3 кости**. Cloth/hair/glass — [24-materials.md](24-materials.md). Closure: capsule floats; `skeletal.fxh` текст.
+`partial`. Закрыты: слоты 1–8 диск, type 3 sphere (r, mass, third), type 7 capsule (r, mass, third, pA, pB), M format, groups/shadow, hdr[0], GetAnim*, lit VS 3 кости. Остаток: third float; type 4 без семпла; 199v двор; `skeletal.fxh` нет в архиве.

@@ -35,7 +35,7 @@ GameServer.dll    IServerShell: мир, ИИ/NavMesh, CommandMgr, миссии
 3. [03-materials.md](03-materials.md) — Mat00 и `.fx`.
 4. [04-shadows.md](04-shadows.md) — stencil volumes + blur.
 5. [05-sky.md](05-sky.md) — `0x00518a70` sky + viewport; `0x00518c70` overlay.
-6. [06-world-draw.md](06-world-draw.md) — bake vs WorldModel vs PhysicsBSP.
+6. [06-world-draw.md](06-world-draw.md) — bake vs WorldModel vs PhysicsBSP; WM/model bind (`0x0051ebf0` / `0x0051f200`).
 7. [07-gap.md](07-gap.md) — Pointman сейчас vs оригинал.
 
 ### Движок целиком

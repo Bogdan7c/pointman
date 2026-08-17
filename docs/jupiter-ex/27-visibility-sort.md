@@ -31,7 +31,11 @@
 | `+0x5c` | FLAG2 dword | **SDK**/Ghidra |
 | `+0x9c,+0xa0,+0xa4` | позиция XYZ для dist² | **Ghidra** |
 | `+0xd4` | материал/цвет блок; `+8` depth-bias index; `+9..+11` extra RGB | **Ghidra** |
-| `+0xe4/+0xe8/+0xec` | custom vis/render для `OT_CUSTOMRENDER=6` | **Ghidra** |
+| `+0xe4/+0xe8/+0xec` | CustomRender vis/render; `OT_MODEL` `+0xe4` int LOD; WM `+0xe8` ushort LOD (`0x0051f700` / `0x0051f920`) | **Ghidra** |
+| `+0xf0` | **тип-зависимо**: WM = wmdata* (первый ushort = индекс `DAT_00576ff4+0x18`); CustomRender = ptr в `0x0050f9b0` | **Ghidra** |
+| `+0x110` | `OT_MODEL`: runtime Model00p* | **Ghidra** `0x0051f200` |
+| `+0x13c` | `OT_MODEL`: material-binding* (`0x00435b80`) | **Ghidra** |
+| `+0x154` | WM: ushort из `wmdata+2` после ExtraInit | **Ghidra** `0x00463ed0` |
 
 Draw record **0x28 байт** (10×u32), вектор `begin/end` как STL:
 
@@ -121,6 +125,19 @@ Classify `0x0051f550` (**Ghidra**; translucent: `include_world=0`):
 
 Это **два независимых списка**, не overlap-тест. Pointman `BakedOverlapIndex` 0.6 **не** оригинал.
 
+Bake и WM толкают **один** формат 0x20-записи (material*, ushort surf, flags+LOD, AABB) в `0x0050fa20`. Куски мира stride 0x14 живут в `DAT_00576ff4+4` (vis/debug) и в таблице WM `DAT_00576ff4+0x18`. Байты, которые `0x0050fa20` кладёт в 0x28 record:
+
+| Источник | param_3 / path | bytes |
+|---|---|---|
+| Bake Ambient / shadow-gather | `0x0051f550` / `0x0051fac0` | `8/0x19` |
+| Bake light | `0x0051f700` / `0x0051f920` | `9/0x1a` |
+| WM opaque | `0x0051ebf0` `param_3=0` | `0xc/0x1b` |
+| WM light | `0x0051ebf0` `param_3=1` | `0xd/0x1c` |
+| Model | `0x0051f200` | `0xa/0x17` (`+1` если `param_5`) |
+| CustomRender | `0x0050f9b0` | `0xe/0x1d` |
+
+Проход (`0x0050ffc0`) передаёт свой `.fx`-technique отдельно (Ambient = 0). Байты record — класс источника. Имя слота `0x00503a30` от этих байт — **partial**. Layout 0x20/0x14: [06-world-draw.md](06-world-draw.md).
+
 ## 7. Псевдокод
 
 ```text
@@ -171,6 +188,8 @@ shader_const = obj_rgba_bytes(+0x38) / 255 * color   # 0x00517c60
 - D3DX annotations `Low`/`Medium`/`High` на Intro `.fx` (какие child-материалы).
 - Piece threshold float в Model00p.
 - Per-surface (не per-object) culling.
+- Кто на load заполняет `DAT_00576ff4+0x18` / `object+0xf0` (`vt+0x40`).
+- Имена байт 8/9/0xc в 0x28 record vs слот `0x00503a30`.
 
 ## 11. Acceptance
 

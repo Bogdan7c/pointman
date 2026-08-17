@@ -31,6 +31,8 @@ Intro: 35 Point + 80 Fill + 39 Cube + 12 Spot + 2 Dir = **168**. (**dump-draw**)
 
 Именованный BSP-браш, не Model00p. Класс `WorldModel.h`: Visible, StartHidden, Translucent/Alpha, CastShadow, ShadowLOD. Retail GameServer: строки `StartHidden`, `CastShadow`, `CASTSHADOW 0`, `Translucent`, `TranslucentLight`. Движок: `OT_WORLDMODEL`; bake — отдельный список `DrawWorld`. `GetMainWorldModel` — exe, не DLL.
 
+Кадр (**Ghidra**): `se_InitWorldModel` `0x00459200` ищет данные по имени (`+0x38`); без non-renderonly кисти — `LT_MISSINGWORLDMODEL` (0x17). `object+0xf0` → ushort индекс в `DAT_00576ff4+0x18`; куски 0x14 / записи 0x20 / поверхности 0x34. UV+Mat00 из render-меша, не из PhysicsBSP. ExtraInit `0x00463ed0` пишет `wmdata+2` → `object+0x154`. Подробно [06-world-draw.md](06-world-draw.md).
+
 Фильтр «рисовать ли болванку» — решение Pointman (`world_model_in_frame`), не SDK.
 
 WorldModel с shatter: `BlindObjectIndex` ≥ 0 → `GetBlindObjectData(index, 0xa85)` ([22-world00p.md](22-world00p.md)). На Intro индексы **27..92** (глобальные, не 0..65). Остальные WM = −1.
@@ -45,4 +47,4 @@ WorldModel с shatter: `BlindObjectIndex` ≥ 0 → `GetBlindObjectData(index, 0
 
 ## Модели персонажей / пропов
 
-`OT_MODEL` + `ILTModel`. Формат Model00p в Pointman ещё не парсится — дыра фазы 1.3, не закрываем «на глаз».
+`OT_MODEL` + `ILTModel`. Диск: [23-model00p.md](23-model00p.md). Кадр `0x0051f200`: модель `object+0x110`, материалы `object+0x13c` (`0x00435b80`), UV в FVF64. Парсера в Pointman нет — дыра фазы 1.3, не закрываем «на глаз».

@@ -22,6 +22,12 @@ Codex MCP: `ghidra` in `.cursor/mcp.json`. Bind `127.0.0.1`. `GHIDRA_MCP_ALLOW_S
 
 Unpacked project (use this): `local/ghidra/PointmanFearUnpacked.gpr` — MCP HTTP **8090** if packed instance still occupies 8089. Load `/FEAR.unpacked.exe` (6131 functions) or `/GameClient.dll`. Packed `PointmanFear.gpr` on 8089 is a dead end.
 
+## Start headless server (GhidraMCP 7.0.0 standalone)
+
+`local/scripts/start-ghidra-headless.sh` — unpacked project on `127.0.0.1:8090`, log in `local/logs/ghidra-8090.log`. Verify: `curl http://127.0.0.1:8090/health` → `"program_name":"FEAR.unpacked.exe"`. Bridge auto-finds it (TCP scan 8089..8105) or via `GHIDRA_MCP_URL` in `/home/bogdan/src/ghidra-mcp/.env`.
+
+Gotchas (already fixed on this machine): the source-built Ghidra has no `application.properties` in its root — it was created (GhidraApplicationLayout locates the install dir by walking up from `java.class.path` until it finds that file, so the install dir must be on the classpath); run with the full Ghidra Framework/Features `lib/*.jar` classpath (target/lib alone lacks log4j); JDK 21; writes user settings to `~/.config/ghidramcp`.
+
 Frame dispatcher: `0x00510680`. Lights: object `+0x57==3`, type `+0x105` = `EEngineLightType`. Point `0x0051e640` does ShadowVolume (id 8) then Point (id 2). Fill batches of 3 at `0x0051c5b0`. ps_2_0 atten: `(1-sat((d/r)²))²`.
 
 Local capture (no pacman wine): `local/tools/wine/wine` + `local/tools/apitrace/win32/.../d3d9.dll`. `PROTON_USE_WINED3D=1`, `WINEDLLOVERRIDES=d3d9=n,b`. Prefix: `compatdata/21090/pfx`. Do not treat DXVK screenshots as D3D9 stencil truth.

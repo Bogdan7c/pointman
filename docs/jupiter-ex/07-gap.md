@@ -17,7 +17,7 @@
 | Emissive | `tEmissiveMap` в Ambient pass (**архив**) | нет |
 | Translucent | отдельный смысл флага + alpha (**SDK**) | объекты выкинуты |
 | Небо | sky **до** мира (FLAG2_SKYOBJECT, viewport AABB, near 0.01, `SkyFarZ` 10000) + overlay после (**Ghidra** `0x00518a70`/`0x00518c70`) | cubemap на empty depth |
-| WorldModel | Mat00 + UV | цвет-хеш, UV=0 |
+| WorldModel | Mat00 + UV из **render**-меша (0x20 record → поверхность 0x34), не PhysicsBSP (**Ghidra** `0x0051ebf0`) | цвет-хеш с PhysicsBSP, UV=0 |
 | Fog | cvars, на Intro выкл (**SDK**) | нет |
 | Cull | device default **CCW** (**захват**); per-mesh неизвестно | NONE из-за цоколя Intro |
 
